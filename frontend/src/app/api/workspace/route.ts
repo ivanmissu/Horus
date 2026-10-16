@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { teams, members, requirements, auditLogs, notificationSettings } from "@/db/schema";
+import { teams, members, requirements, auditLogs, notificationSettings, sessions } from "@/db/schema";
 import { loadWorkspace } from "@/lib/data";
 import { getActor, AppError, assertOwner, assertTeam } from "@/lib/auth";
 import { DEFAULT_STAGES } from "@/lib/domain";
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       if (!team) throw new AppError("团队不存在", 404);
       const values = { teamId, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority || "medium"), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate), stageId: team.stages[0].id, createdBy: actor.id, updatedBy: actor.id };
       result = await db.transaction(async tx => {
-        const [created] = await tx.insert(requirements).values(values).returning();
+        const [created] = await tx.insert(requirements).values(values).$returningId();
         await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: created.id, action, detail: values });
         return { id: created.id };
       });
@@ -96,6 +96,23 @@ export async function POST(request: NextRequest) {
         await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { teamId: values.id, name: values.name } });
       });
       result.id = values.id;
+    } else if (action === "updateTeam") {
+      assertOwner(actor);
+      const id = text(body.id, "团队", true, 64);
+      const name = text(body.name, "团队名称", true, 30);
+      const description = text(body.description, "团队介绍", false, 200);
+      const colors = ["purple", "blue", "teal", "orange"];
+      const color = text(body.color, "团队颜色") || "purple";
+      if (!colors.includes(color)) throw new AppError("团队颜色无效");
+      const icon = color === "blue" ? "layers" : color === "teal" ? "chart" : color === "orange" ? "server" : "code";
+      await db.transaction(async tx => {
+        const [team] = await tx.select().from(teams).where(eq(teams.id, id)).for("update");
+        if (!team) throw new AppError("团队不存在", 404);
+        const [duplicate] = await tx.select({ id: teams.id }).from(teams).where(and(eq(teams.name, name), ne(teams.id, id)));
+        if (duplicate) throw new AppError("该团队名称已存在");
+        await tx.update(teams).set({ name, description, color, icon }).where(eq(teams.id, id));
+        await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { teamId: id, before: { name: team.name, description: team.description, color: team.color }, after: { name, description, color } } });
+      });
     } else if (action === "updateTemplate") {
       assertOwner(actor);
       const teamId = text(body.teamId, "团队", true);
@@ -122,41 +139,55 @@ export async function POST(request: NextRequest) {
         await tx.update(teams).set({ stages }).where(eq(teams.id, teamId));
         await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { teamId, stages, migrations } });
       });
-    } else if (action === "createMember" || action === "updateMember" || action === "toggleMember") {
+    } else if (action === "toggleMember") {
       assertOwner(actor);
-      if (action === "toggleMember") {
-        const id = text(body.id, "成员 ID", true);
-        if (id === actor.id || id === "owner") throw new AppError("不能停用当前负责人账号");
-        const [member] = await db.select().from(members).where(eq(members.id, id));
+      const id = text(body.id, "成员 ID", true, 64);
+      if (id === actor.id || id === "owner") throw new AppError("不能停用当前负责人账号");
+      await db.transaction(async tx => {
+        const [member] = await tx.select().from(members).where(eq(members.id, id)).for("update");
         if (!member) throw new AppError("成员不存在", 404);
-        await db.transaction(async tx => {
-          await tx.update(members).set({ active: !member.active }).where(eq(members.id, id));
-          await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { memberId: id, active: !member.active } });
-        });
-      } else {
-        const name = text(body.name, "成员姓名", true, 40);
-        const role = body.role === "owner" ? "owner" as const : body.role === "pm" ? "pm" as const : null;
-        if (!role) throw new AppError("角色无效");
-        if (!Array.isArray(body.teamIds) || body.teamIds.some(id => typeof id !== "string")) throw new AppError("请选择绑定团队");
-        const allTeams = await db.select({ id: teams.id }).from(teams);
-        const teamIds = [...new Set(body.teamIds as string[])];
-        if (teamIds.some(id => !allTeams.some(t => t.id === id))) throw new AppError("绑定团队不存在");
-        const id = action === "createMember" ? randomUUID() : text(body.id, "成员 ID", true);
-        if ((id === actor.id || id === "owner") && role !== "owner") throw new AppError("不能修改当前负责人角色");
-        await db.transaction(async tx => {
-          if (action === "createMember") {
-            const username = text(body.username, "登录账号", true, 32);
-            if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) throw new AppError("账号需为 3–32 位字母、数字、下划线或短横线");
-            const [duplicate] = await tx.select().from(members).where(eq(members.username, username));
-            if (duplicate) throw new AppError("此登录账号已存在");
-            await tx.insert(members).values({ id, name, username, role, teamIds });
-          } else {
-            const [updated] = await tx.update(members).set({ name, role, teamIds }).where(eq(members.id, id)).returning();
-            if (!updated) throw new AppError("成员不存在", 404);
-          }
-          await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { memberId: id, name, role, teamIds } });
-        });
-      }
+        const active = !member.active;
+        await tx.update(members).set({ active }).where(eq(members.id, id));
+        if (!active) await tx.delete(sessions).where(eq(sessions.memberId, id));
+        await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { memberId: id, active } });
+      });
+    } else if (action === "resetMemberPassword") {
+      assertOwner(actor);
+      const id = text(body.id, "成员 ID", true, 64);
+      if (id === actor.id || id === "owner") throw new AppError("不能重置当前负责人账号的密码");
+      await db.transaction(async tx => {
+        const [member] = await tx.select().from(members).where(eq(members.id, id)).for("update");
+        if (!member) throw new AppError("成员不存在", 404);
+        if (member.role !== "pm") throw new AppError("仅支持重置产品经理账号密码");
+        await tx.update(members).set({ passwordHash: null }).where(eq(members.id, id));
+        await tx.delete(sessions).where(eq(sessions.memberId, id));
+        await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { memberId: id, username: member.username } });
+      });
+    } else if (action === "createMember" || action === "updateMember") {
+      assertOwner(actor);
+      const name = text(body.name, "成员姓名", true, 40);
+      const role = body.role === "owner" ? "owner" as const : body.role === "pm" ? "pm" as const : null;
+      if (!role) throw new AppError("角色无效");
+      if (!Array.isArray(body.teamIds) || body.teamIds.some(id => typeof id !== "string")) throw new AppError("请选择绑定团队");
+      const allTeams = await db.select({ id: teams.id }).from(teams);
+      const teamIds = [...new Set(body.teamIds as string[])];
+      if (teamIds.some(id => !allTeams.some(t => t.id === id))) throw new AppError("绑定团队不存在");
+      const id = action === "createMember" ? randomUUID() : text(body.id, "成员 ID", true, 64);
+      if ((id === actor.id || id === "owner") && role !== "owner") throw new AppError("不能修改当前负责人角色");
+      await db.transaction(async tx => {
+        if (action === "createMember") {
+          const username = text(body.username, "登录账号", true, 32);
+          if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) throw new AppError("账号需为 3–32 位字母、数字、下划线或短横线");
+          const [duplicate] = await tx.select().from(members).where(eq(members.username, username));
+          if (duplicate) throw new AppError("此登录账号已存在");
+          await tx.insert(members).values({ id, name, username, role, teamIds: role === "owner" ? [] : teamIds });
+        } else {
+          const [existing] = await tx.select({ id: members.id }).from(members).where(eq(members.id, id)).for("update");
+          if (!existing) throw new AppError("成员不存在", 404);
+          await tx.update(members).set({ name, role, teamIds: role === "owner" ? [] : teamIds }).where(eq(members.id, id));
+        }
+        await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { memberId: id, name, role, teamIds: role === "owner" ? [] : teamIds } });
+      });
     } else if (action === "saveNotifications") {
       assertOwner(actor);
       const [current] = await db.select().from(notificationSettings).where(eq(notificationSettings.id, "default"));

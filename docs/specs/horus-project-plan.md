@@ -6,6 +6,7 @@
 - **关联文档**：[《Horus 需求文档（V1）》](./horus-design.md)
 - **交付模式**：单兵 + AI 协同敏捷冲刺（5 个工作日上线）
 - **技术路线**：基于现有 `frontend/` Next.js 全栈原型直接生产化改造（Next.js App Router + Drizzle ORM + MySQL 8.0 + Docker 单实例容器化）
+- **执行状态（2026-10-16）**：第一步 M1 + M2 已完成代码改造；typecheck、lint、build 与默认安全模式验收通过。真实 MySQL 建表与完整 Playwright 验收仍需在具备 MySQL/Chromium 的环境中执行。
 
 ---
 
@@ -41,7 +42,7 @@
 
 #### Gap 1：数据库底座从 PostgreSQL 迁移至 MySQL 8.0（最高优先级 · NFR-1）
 现有代码耦合了 PostgreSQL 驱动与方言特性，切换到 MySQL 需解决以下 4 个具体技术点：
-1. **依赖与连接池替换**：`pg` + `drizzle-orm/node-postgres` 需替换为 `mysql2` + `drizzle-orm/mysql2`；`drizzle.config.json` 的 `dialect` 需改为 `"mysql"`。
+1. **依赖与连接池替换**：`pg` + `drizzle-orm/node-postgres` 需替换为 `mysql2` + `drizzle-orm/mysql2`；将 Drizzle 配置改为环境变量驱动的 `drizzle.config.ts`，`dialect` 设为 `"mysql"` 并从 `DATABASE_URL` 读取连接地址。
 2. **表结构（Schema）类型映射**：
    - MySQL InnoDB **不允许无长度的 `TEXT` 列作为主键或唯一索引**。现有 `horus_teams.id`、`horus_members.id`、`horus_members.username`、`horus_sessions.id`、`horus_notification_settings.id` 均定义为 `text()`，必须改为 `varchar(64)` 或 `varchar(32)`。
    - `jsonb` 需替换为 MySQL 的 `json` 类型。
@@ -95,7 +96,7 @@ MySQL 数据层迁移  ───►  生产解耦与管理闭环  ───►  
 
 | 任务编号 | 任务名称 | 涉及文件 | 实施要点 |
 | :--- | :--- | :--- | :--- |
-| **T1.1** | 数据库驱动与配置切换 | `frontend/package.json`<br>`frontend/drizzle.config.json` | 移除 `pg`、`@types/pg`，安装 `mysql2`；`drizzle.config.json` 的 `dialect` 改为 `"mysql"` |
+| **T1.1** | 数据库驱动与配置切换 | `frontend/package.json`<br>`frontend/drizzle.config.ts` | 移除 `pg`、`@types/pg`，安装 `mysql2`；Drizzle 配置使用 MySQL dialect 并从 `DATABASE_URL` 读取连接地址 |
 | **T1.2** | Drizzle MySQL Schema 重构 | `frontend/src/db/schema.ts`<br>`frontend/src/db/index.ts` | 使用 `mysqlTable` 重写 7 张表；主键/唯一键改用 `varchar`；`drizzle(pool)` 切换为 `mysql2/promise` 连接池 |
 | **T1.3** | 消除 `.returning()` 与 PG 锁 | `frontend/src/app/api/workspace/route.ts`<br>`frontend/src/app/api/auth/route.ts`<br>`frontend/src/db/seed.ts` | `insert` 改用 `$returningId()`；`update` 改用条件更新后校验 `affectedRows`；`seed.ts` 改用 MySQL `GET_LOCK` |
 | **T1.4** | 时间与 JSON 字段兼容性对齐 | `frontend/src/db/schema.ts`<br>`frontend/src/lib/data.ts` | 确保 MySQL 返回的日期/时间戳与前端期望的 ISO 字符串格式完全一致，避免前端日期计算偏差 |
@@ -298,7 +299,7 @@ APP_URL="http://horus.internal.company.com"
 
 作为项目负责人，本计划确认后，我们可以立即在当前分支上按 **M1 → M4** 顺序直接编码落地：
 
-1. **第一步（立即执行 M1 & M2）**：完成 MySQL 依赖替换、`schema.ts` 迁移、消除 `.returning()`、实现生产/演示解耦、`db:init` 脚本，以及「重置成员密码」与「编辑团队」功能。
-2. **第二步（执行 M3 & M4）**：补齐 `Dockerfile`、`docker-compose.yml`、`.env.example`，并运行完整的构建与自动化测试验证。
+1. **第一步（M1 & M2 代码实施已完成）**：已完成 MySQL 依赖与 Schema 切换、移除 `.returning()` / PostgreSQL 锁、生产默认鉴权、`db:init`、成员密码重置和团队信息编辑；待在真实 MySQL 环境执行建表与完整验收。
+2. **第二步（执行 M3 & M4）**：补齐调度加固、`Dockerfile`、`docker-compose.yml`、`.env.example`，并运行全量自动化测试验证。
 
 > 如你认可本计划，请直接告诉我**“按计划开始实现”**（或提出需要微调的点），我将立即开始推进代码改造。

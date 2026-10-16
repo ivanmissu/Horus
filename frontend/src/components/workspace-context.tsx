@@ -23,7 +23,6 @@ export function WorkspaceProvider({ initialData, children }: { initialData: Work
   const [detailId, openDetail] = useState<number | null>(null);
   const [createFor, setCreateFor] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
-  useEffect(() => { setData(initialData); }, [initialData]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 4200);
