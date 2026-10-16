@@ -8,17 +8,22 @@ import { members, sessions } from "@/db/schema";
 import { ensureSeed } from "@/db/seed";
 import { AppError, hashToken } from "@/lib/auth";
 import { purgeExpiredSessions } from "@/lib/sessions";
+import { isPreviewMode } from "@/lib/preview";
 
 const attempts = new Map<string, { count: number; until: number }>();
 export async function POST(request: NextRequest) {
   try {
+    if (isPreviewMode()) throw new AppError("只读预览不支持账号登录，请连接 MySQL", 503);
     if (process.env.HORUS_DEMO_MODE === "true") await ensureSeed();
     await purgeExpiredSessions();
     const body = await request.json();
     const jar = await cookies();
     if (body.action === "logout") {
-      const token = jar.get("horus_session")?.value;
-      if (token) await db.delete(sessions).where(eq(sessions.id, hashToken(token)));
+      const bearer = process.env.HORUS_EMBEDDED_PREVIEW === "true"
+        ? request.headers.get("authorization")?.match(/^Bearer ([0-9a-f]{64})$/i)?.[1] : undefined;
+      for (const token of new Set([jar.get("horus_session")?.value, bearer].filter((value): value is string => !!value))) {
+        await db.delete(sessions).where(eq(sessions.id, hashToken(token)));
+      }
       jar.delete("horus_session");
       return NextResponse.json({ ok: true });
     }
@@ -42,9 +47,30 @@ export async function POST(request: NextRequest) {
     const token = randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + 7 * 86400000);
     await db.insert(sessions).values({ id: hashToken(token), memberId: member.id, expiresAt: expires.toISOString() });
-    jar.set("horus_session", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", expires });
+    // Arena's HTTPS preview is embedded cross-site. Lax cookies are not sent in
+    // that iframe; a Secure, partitioned cookie keeps the preview session local
+    // to its top-level site without weakening the normal first-party policy.
+    const forwardedHost = request.headers.get("x-forwarded-host") || "";
+    const host = request.headers.get("host") || "";
+    const embeddedPreview = process.env.HORUS_EMBEDDED_PREVIEW === "true"
+      || (process.env.NODE_ENV === "development" && [forwardedHost, host].some(value => /\.e2b\.app(?::\d+)?$/i.test(value)));
+    // Match the browser-facing scheme. Intranet HTTP cannot store a Secure
+    // cookie; behind HTTPS the reverse proxy must forward X-Forwarded-Proto.
+    const externalProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+    const secure = embeddedPreview || externalProto === "https" || request.nextUrl.protocol === "https:";
+    jar.set("horus_session", token, {
+      httpOnly: true,
+      secure,
+      sameSite: embeddedPreview ? "none" : "lax",
+      ...(embeddedPreview ? { partitioned: true } : {}),
+      path: "/",
+      expires,
+    });
     attempts.delete(key);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(
+      { ok: true, ...(process.env.HORUS_EMBEDDED_PREVIEW === "true" ? { previewToken: token } : {}) },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     const databaseMissing = !process.env.DATABASE_URL;
     const message = error instanceof AppError

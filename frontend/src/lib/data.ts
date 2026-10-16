@@ -3,9 +3,12 @@ import { teams, members, requirements, notificationSettings, notificationLogs } 
 import { asc, desc } from "drizzle-orm";
 import { getActor, publicMember } from "./auth";
 import { newWindowDays } from "./domain";
+import { isPreviewMode } from "./preview";
+import { previewWorkspace } from "./preview-data";
 import type { WorkspaceData } from "./types";
 
 export async function loadWorkspace(): Promise<WorkspaceData> {
+  if (isPreviewMode()) return previewWorkspace();
   const { actor, demo } = await getActor();
   const [allTeams, allMembers, allRequirements, [settings], logs] = await Promise.all([
     db.select().from(teams).orderBy(asc(teams.createdAt)),
@@ -18,6 +21,6 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
   return {
     teams: allTeams, members: allMembers.map(publicMember), requirements: allRequirements,
     settings: { ...safeSettings, hasWebhook: !!webhook, hasSigningSecret: !!signingSecret, pendingCount: pendingItems.length },
-    logs, actor, demo, now: new Date().toISOString(), newWindowDays: newWindowDays(),
+    logs, actor, demo, embeddedAuth: process.env.HORUS_EMBEDDED_PREVIEW === "true", now: new Date().toISOString(), newWindowDays: newWindowDays(),
   };
 }

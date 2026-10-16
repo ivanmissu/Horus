@@ -6,7 +6,7 @@
 - **关联文档**：[《Horus 需求文档（V1）》](./horus-design.md)
 - **交付模式**：单兵 + AI 协同敏捷冲刺（5 个工作日上线）
 - **技术路线**：基于现有 `frontend/` Next.js 全栈原型直接生产化改造（Next.js App Router + Drizzle ORM + MySQL 8.0 + Docker 单实例容器化）
-- **执行状态（2026-10-16）**：M1–M4 代码已落地。M3 完成每日摘要数据库抢占、过期会话清理、新建窗口配置（`HORUS_NEW_WINDOW_DAYS` / `NEXT_PUBLIC_NEW_WINDOW_DAYS`，默认 7）及验收断言；M4 完成 standalone 构建、`frontend/Dockerfile`、`docker-compose.yml`、`.env.example` 与 [`docs/deployment-guide.md`](../deployment-guide.md)。真实 MySQL 上的 `drizzle-kit push`、Playwright 全量验收和 `docker compose` 健康检查仍需在具备 MySQL / Docker / Chromium 的环境执行。M5 内网投产与钉钉实测待现场进行。
+- **执行状态（2026-10-16）**：M1–M4 代码已落地。M3 完成每日摘要数据库抢占、过期会话清理、新建窗口配置（`HORUS_NEW_WINDOW_DAYS` / `NEXT_PUBLIC_NEW_WINDOW_DAYS`，默认 7）及验收断言；M4 完成 standalone 构建、`frontend/Dockerfile`、`docker-compose.yml`、`.env.example` 与 [`docs/deployment-guide.md`](../deployment-guide.md)。M5 本地预检已执行：`npm ci`、lint、typecheck、domain 测试、build、生产默认鉴权测试均通过；后在沙箱安装 MySQL 5.7.29 测试实例，完成 7 表初始化、演示数据灌入、`test:digest`、`/api/health` 及读写烟测（详见记录）。MySQL 8.0 的 `drizzle-kit push`、Playwright、Docker 健康检查与内网/钉钉实测尚未执行，不可宣称已投产。现场逐项记录见 [M5 UAT 与投产记录](../m5-uat-checklist.md)。
 
 ---
 
@@ -307,4 +307,4 @@ M1–M4 的代码改造已经落在当前分支。剩下的是环境验收和 M5
 2. **第二步（M3 & M4 代码实施已完成）**：每日摘要在发信前用条件更新抢占 `last_run_date`；登录与调度 tick 清理过期会话；「本周新建」窗口可配置且默认仍为 7 天；验收脚本覆盖抢占与窗口展示。容器侧已提供 standalone Dockerfile、compose、环境模板和部署手册。待在具备 MySQL、Docker 与 Chromium 的环境执行 `npm run test:digest`、`npm run test:acceptance` 和 `docker compose up -d --build`。
 3. **第三步（执行 M5）**：内网部署、钉钉群机器人实测、真实团队/PM 初始化，以及负责人在手机端核对首页。现场步骤见 [`docs/deployment-guide.md`](../deployment-guide.md)。
 
-> 下一步是 M5：在内网按部署手册拉起容器，完成钉钉实测和真实团队初始化。若验收环境已就绪，直接说「开始 M5」即可。
+> M5 预检已执行，但内网环境与钉钉配置未提供。下一步由运维与团队负责人在现场按 [M5 UAT 与投产记录](../m5-uat-checklist.md) 逐项执行并签收；在真实 MySQL、Docker、浏览器与钉钉实测通过前不得标记正式上线。

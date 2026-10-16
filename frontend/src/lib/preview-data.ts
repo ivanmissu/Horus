@@ -1,0 +1,74 @@
+import { DEFAULT_STAGES, newWindowDays, todayString } from "./domain";
+import type { Member, Requirement, Team, WorkspaceData } from "./types";
+
+// No database or DingTalk traffic. Data is generated for a disposable read-only UI preview.
+const now = new Date();
+const ago = (days: number) => new Date(now.getTime() - days * 86400000).toISOString();
+const due = (days: number) => todayString(new Date(now.getTime() + days * 86400000));
+
+export const previewActor: Member = {
+  id: "preview-owner", username: "preview", name: "预览负责人", role: "owner", teamIds: [],
+  active: true, firstLogin: false, createdAt: ago(30),
+};
+
+const teamDetails = [
+  ["platform", "基础平台组", "构建稳定、高效、可复用的技术底座", "purple", "code"],
+  ["product", "业务产品组", "以用户体验为中心，持续交付业务价值", "blue", "layers"],
+  ["data", "数据智能组", "让数据连接业务，让洞察驱动决策", "teal", "chart"],
+  ["infra", "基础设施组", "保障每一次交付的可靠与高效", "orange", "server"],
+] as const;
+
+const teams: Team[] = teamDetails.map(([id, name, description, color, icon]) => ({
+  id, name, description, color, icon, stages: DEFAULT_STAGES, createdAt: ago(30),
+}));
+const members: Member[] = [previewActor,
+  { id: "pm-lin", username: "lin", name: "林小满", role: "pm", teamIds: ["platform", "infra"], active: true, firstLogin: false, createdAt: ago(25) },
+  { id: "pm-su", username: "su", name: "苏晓", role: "pm", teamIds: ["product"], active: true, firstLogin: false, createdAt: ago(25) },
+  { id: "pm-zhou", username: "zhou", name: "周亦舟", role: "pm", teamIds: ["data"], active: true, firstLogin: false, createdAt: ago(25) },
+];
+
+type Sample = [string, string, number, number, Requirement["priority"], number | null, string, string?];
+const samples: Sample[] = [
+  ["platform", "统一身份认证 SSO 接入", 2, 2, "high", 5, "林小满"],
+  ["platform", "多租户权限模型升级", 12, 3, "high", -2, "张铭", "等待安全团队确认权限边界"],
+  ["platform", "开放平台 API 限流优化", 4, 1, "medium", 7, "李思远"],
+  ["platform", "消息中心推送链路改造", 5, 4, "high", 2, "王一帆"],
+  ["platform", "应用配置中心灰度发布", 1, 0, "medium", 9, "林小满"],
+  ["platform", "统一网关访问日志增强", 16, 5, "medium", 4, "张铭"],
+  ["product", "企业工作台全新改版", 3, 2, "high", 6, "苏晓"],
+  ["product", "订单结算流程优化", 10, 4, "high", -1, "赵可", "等待支付渠道回复"],
+  ["product", "客户标签批量管理", 6, 1, "medium", 8, "苏晓"],
+  ["product", "移动端消息聚合", 1, 0, "low", 10, "许诺"],
+  ["data", "经营数据看板 2.0", 4, 2, "high", 5, "周亦舟"],
+  ["data", "用户行为埋点规范升级", 6, 3, "medium", 3, "沈言", "依赖业务端补齐埋点字段"],
+  ["data", "实时指标口径统一", 11, 5, "high", -3, "沈言"],
+  ["data", "数据质量自动巡检", 9, 0, "low", null, "顾辰"],
+  ["infra", "容器资源弹性伸缩", 2, 1, "high", 10, "林小满"],
+  ["infra", "CI/CD 构建缓存优化", 5, 2, "medium", 4, "陆川"],
+  ["infra", "生产环境日志链路升级", 13, 3, "medium", 4, "陆川", "等待基础资源扩容审批"],
+];
+const requirements: Requirement[] = samples.map(([teamId, title, age, stage, priority, expected, owner, block], index) => ({
+  id: index + 1, teamId, title, description: `推进${title}，提升团队交付质量。`, priority, owner,
+  expectedDate: expected === null ? null : due(expected), stageId: DEFAULT_STAGES[stage].id,
+  enteredAt: ago(Math.min(age, 2)), blocked: !!block, blockReason: block || "", status: "active",
+  source: "手工录入", externalId: null, createdBy: "preview-owner", updatedBy: "preview-owner",
+  createdAt: ago(age), updatedAt: ago(Math.min(age, 2)), archivedAt: null,
+}));
+for (const [index, team] of teams.entries()) {
+  requirements.push({
+    id: samples.length + index + 1, teamId: team.id, title: `${team.name}上线交付回顾`,
+    description: "已通过上线验收，正式交付使用。", priority: "medium", owner: "林小满",
+    expectedDate: due(-4), stageId: "released", enteredAt: ago(4), blocked: false, blockReason: "",
+    status: "released", source: "手工录入", externalId: null, createdBy: "preview-owner",
+    updatedBy: "preview-owner", createdAt: ago(21), updatedAt: ago(4), archivedAt: ago(4),
+  });
+}
+
+export function previewWorkspace(): WorkspaceData {
+  return {
+    teams, members, requirements, actor: previewActor, demo: true, preview: true,
+    settings: { id: "default", enabled: false, time: "09:30", appUrl: "", lastRunDate: null,
+      hasWebhook: false, hasSigningSecret: false, pendingCount: 0 },
+    logs: [], now: new Date().toISOString(), newWindowDays: newWindowDays(),
+  };
+}

@@ -3,8 +3,10 @@ import { loadWorkspace } from "@/lib/data";
 import { AppError } from "@/lib/auth";
 import type { WorkspaceData } from "@/lib/types";
 import { Workspace } from "./workspace";
+import { EmbeddedWorkspace } from "./embedded-workspace";
 
 export async function WorkspacePage() {
+  if (process.env.HORUS_EMBEDDED_PREVIEW === "true") return <EmbeddedWorkspace />;
   let initialData: WorkspaceData;
   try {
     initialData = await loadWorkspace();
