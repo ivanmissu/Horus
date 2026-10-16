@@ -14,8 +14,10 @@ export function publicMember(member: typeof members.$inferSelect): Member {
   return { ...safe, firstLogin: !passwordHash };
 }
 export function hashToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
+export function isDemoMode() { return process.env.HORUS_DEMO_MODE === "true"; }
 export async function getActor(): Promise<{ actor: Member; demo: boolean }> {
-  await ensureSeed();
+  const demoMode = isDemoMode();
+  if (demoMode) await ensureSeed();
   const token = (await cookies()).get("horus_session")?.value;
   if (token) {
     const [result] = await db.select({ member: members }).from(sessions)
@@ -24,7 +26,7 @@ export async function getActor(): Promise<{ actor: Member; demo: boolean }> {
     if (!result) throw new AppError("登录已过期或账号已停用，请重新登录", 401);
     return { actor: publicMember(result.member), demo: false };
   }
-  if (process.env.HORUS_REQUIRE_LOGIN === "true") throw new AppError("请先登录", 401);
+  if (!demoMode) throw new AppError("请先登录", 401);
   const [owner] = await db.select().from(members).where(and(eq(members.id, "owner"), eq(members.active, true)));
   if (!owner) throw new AppError("请先登录", 401);
   return { actor: publicMember(owner), demo: true };

@@ -30,8 +30,15 @@ try {
   assert.equal(baseline.members.some(m => "passwordHash" in m), false);
   check("Workspace and secret redaction");
   teamId = (await post("createTeam", { name: `__验收临时团队_${suffix}`, description: "自动化验收后清理", color: "teal" })).id;
-  await post("createMember", { name: "验收产品经理", username: testUsername, role: "pm", teamIds: [teamId] });
+  const editedTeamName = `__验收临时团队_${suffix}_已编辑`;
+  await post("updateTeam", { id: teamId, name: editedTeamName, description: "团队信息编辑验收", color: "orange" });
   let data = await workspace();
+  assert.equal(data.teams.find(t => t.id === teamId).name, editedTeamName);
+  assert.equal(data.teams.find(t => t.id === teamId).description, "团队信息编辑验收");
+  assert.equal(data.teams.find(t => t.id === teamId).color, "orange");
+  check("Team name, description and color update");
+  await post("createMember", { name: "验收产品经理", username: testUsername, role: "pm", teamIds: [teamId] });
+  data = await workspace();
   memberId = data.members.find(m => m.username === testUsername).id;
   const initialStages = data.teams.find(t => t.id === teamId).stages;
   const identify = await request("/api/auth", { method: "POST", body: { action: "identify", username: testUsername } });
@@ -82,15 +89,24 @@ try {
   await post("saveNotifications", { webhook: "https://example.com/robot/send?access_token=test", time: "09:30", enabled: false, appUrl: base }, 400);
   await post("saveNotifications", { time: "25:00", enabled: false, appUrl: base }, 400);
   if (!baseline.settings.hasWebhook) await post("sendNotification", {}, 400);
-  await post("toggleMember", { id: memberId });
+  await post("resetMemberPassword", { id: memberId });
   await request("/api/workspace", { cookie, expected: 401 });
+  const resetIdentify = await request("/api/auth", { method: "POST", body: { action: "identify", username: testUsername } });
+  assert.equal(resetIdentify.data.firstLogin, true);
+  const resetPassword = `Horus-${randomBytes(12).toString("hex")}`;
+  const resetAuth = await request("/api/auth", { method: "POST", body: { action: "login", username: testUsername, password: resetPassword } });
+  const resetCookie = resetAuth.response.headers.get("set-cookie").split(";")[0];
+  assert.equal((await workspace(resetCookie)).actor.firstLogin, false);
+  await post("toggleMember", { id: memberId });
+  await request("/api/workspace", { cookie: resetCookie, expected: 401 });
+  check("Password reset, re-enrollment and forced session invalidation");
   check("Notification validation and disabled-session rejection");
 
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.on("pageerror", e => errors.push(e.message));
   await page.goto(`${base}/teams/${teamId}`, { waitUntil: "networkidle" });
-  assert.equal(await page.getByRole("heading", { level: 1 }).textContent(), `__验收临时团队_${suffix}`);
+  assert.equal(await page.getByRole("heading", { level: 1 }).textContent(), editedTeamName);
   await page.getByRole("button", { name: "新建需求", exact: true }).click();
   const uiTitle = `__验收：浏览器新建_${suffix}`;
   await page.locator("#new-title").fill(uiTitle);
@@ -139,6 +155,18 @@ try {
     assert.equal(response.status(), 200, path);
   }
   check("Dashboard filtering, collapse, search and every application route");
+  await page.goto(`${base}/settings/members`, { waitUntil: "networkidle" });
+  await page.locator(".team-list-tabs button").nth(1).click();
+  const teamCard = page.locator(".team-management-card").filter({ hasText: editedTeamName });
+  await teamCard.getByRole("button", { name: "编辑团队" }).click();
+  const browserTeamName = `${editedTeamName}_UI`;
+  await page.locator("#team-name").fill(browserTeamName);
+  await page.locator("#team-description").fill("浏览器编辑团队信息成功");
+  await page.getByRole("button", { name: "选择蓝色标识" }).click();
+  await page.getByRole("button", { name: "保存修改", exact: true }).click();
+  await page.locator(".team-management-card").filter({ hasText: browserTeamName }).waitFor();
+  await page.locator(".team-nav").getByRole("link", { name: browserTeamName }).waitFor();
+  check("Browser team edit updates card and workspace navigation");
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   mobile.on("pageerror", e => errors.push(e.message));
@@ -164,7 +192,7 @@ try {
     await db.transaction(async tx => {
       const fixtureRows = await tx.select({ id: requirements.id }).from(requirements).where(eq(requirements.teamId, teamId));
       const fixtureIds = fixtureRows.map(r => r.id);
-      await tx.delete(auditLogs).where(or(inArray(auditLogs.requirementId, fixtureIds.length ? fixtureIds : [-1]), eq(auditLogs.actorId, memberId || "__no_member__"), sql`${auditLogs.detail}->>'teamId' = ${teamId}`, sql`${auditLogs.detail}->>'memberId' = ${memberId || "__no_member__"}`));
+      await tx.delete(auditLogs).where(or(inArray(auditLogs.requirementId, fixtureIds.length ? fixtureIds : [-1]), eq(auditLogs.actorId, memberId || "__no_member__"), sql`JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.teamId')) = ${teamId}`, sql`JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.memberId')) = ${memberId || "__no_member__"}`));
       if (memberId) await tx.delete(sessions).where(eq(sessions.memberId, memberId));
       await tx.delete(requirements).where(eq(requirements.teamId, teamId));
       if (memberId) await tx.delete(members).where(eq(members.id, memberId));

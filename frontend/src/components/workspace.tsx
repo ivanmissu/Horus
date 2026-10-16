@@ -12,7 +12,7 @@ import { isOverdue, requirementCode } from "@/lib/domain";
 import type { WorkspaceData } from "@/lib/types";
 
 export function Workspace({ initialData }: { initialData: WorkspaceData }) {
-  return <WorkspaceProvider initialData={initialData}><WorkspaceShell /></WorkspaceProvider>;
+  return <WorkspaceProvider key={initialData.now} initialData={initialData}><WorkspaceShell /></WorkspaceProvider>;
 }
 function WorkspaceShell() {
   const { data, query, setQuery, detailId, openDetail, createFor, closeCreate, toast, notify } = useWorkspace();
