@@ -34,6 +34,8 @@ npm run dev
 - `HORUS_DEMO_MODE=true`：仅用于本地/受控演示。显式启用后自动灌入演示团队和需求，并允许免登录负责人体验；默认未开启，匿名访问工作台会跳转至 `/login`。
 - `HORUS_DB_CONNECTION_LIMIT`：MySQL 连接池大小，默认 `10`。
 - `APP_URL`：钉钉摘要链接的兜底地址。
+- `HORUS_NEW_WINDOW_DAYS`：首页「本周新建」滚动窗口，默认 `7`，允许 1–90。运行时读取，并随工作台数据下发给页面。
+- `NEXT_PUBLIC_NEW_WINDOW_DAYS`：同上窗口的构建期兜底。两者都配置时，以 `HORUS_NEW_WINDOW_DAYS` 为准。
 
 **不要在生产环境开启 `HORUS_DEMO_MODE`。** 生产模式默认强制登录，不会自动创建演示业务数据。
 
@@ -50,10 +52,13 @@ MySQL schema 包含团队、成员、需求、会话、审计日志、通知设�
 ## 开发与验证
 
 ```bash
+npm run test:domain
 npm run typecheck
 npm run lint
 npm run build
 ```
+
+`npm run test:digest` 在已配置 `DATABASE_URL` 时验证每日摘要的数据库抢占，不会调用钉钉。
 
 接口与浏览器验收使用独立临时团队/成员。先以 `HORUS_DEMO_MODE=true` 启动已初始化的测试 MySQL 与应用，再运行：
 
@@ -72,7 +77,7 @@ npm run test:security
 ## 调度与边界
 
 - `src/instrumentation.ts` 在 Node 服务启动时开启分钟级调度，适用于单实例持续在线部署；时区为 `Asia/Shanghai`。
-- 每天到达配置时间后最多发送一次；失败日志及待重试摘要会保留至次日合并发送。
-- 钉钉测试消息使用已保存的真实配置，不伪造发送结果。
+- 每天到达配置时间后，调度器用条件更新抢占当日执行权，避免重启或重叠 tick 重复发送。失败日志及待重试摘要会保留至次日合并发送。
+- 钉钉测试消息使用已保存的真实配置，不伪造发送结果，也不占用当日定时名额。
 - 需求负责人为自由文本；需求来源默认为「手工录入」，外部 ID 字段为后续集成预留。
-- 当前交付已完成 MySQL 数据层和生产/演示安全默认改造；Docker 编排与生产内网部署仍需按项目计划后续完成。
+- 生产部署使用仓库根目录的 `docker compose up -d --build`。步骤、备份恢复和钉钉联调见 [`docs/deployment-guide.md`](../docs/deployment-guide.md)。

@@ -1,0 +1,62 @@
+# Single-instance Horus + MySQL 8.0. Do not scale the app service:
+# NFR-1 is one Next.js container, and the digest scheduler assumes one process
+# plus a database claim so a restart cannot double-send the same day.
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: horus-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-horus}
+      MYSQL_USER: ${MYSQL_USER:-horus}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - horus-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  horus:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_NEW_WINDOW_DAYS: ${NEXT_PUBLIC_NEW_WINDOW_DAYS:-7}
+    image: horus:local
+    container_name: horus-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-horus}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-horus}
+      HORUS_DEMO_MODE: ${HORUS_DEMO_MODE:-false}
+      HORUS_INIT_OWNER_USERNAME: ${HORUS_INIT_OWNER_USERNAME:-admin}
+      HORUS_INIT_OWNER_NAME: "${HORUS_INIT_OWNER_NAME:-团队负责人}"
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      HORUS_NEW_WINDOW_DAYS: ${HORUS_NEW_WINDOW_DAYS:-7}
+      NEXT_PUBLIC_NEW_WINDOW_DAYS: ${NEXT_PUBLIC_NEW_WINDOW_DAYS:-7}
+      HORUS_DB_CONNECTION_LIMIT: ${HORUS_DB_CONNECTION_LIMIT:-10}
+      TZ: Asia/Shanghai
+      PORT: "3000"
+    ports:
+      - "${HORUS_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 60s
+
+volumes:
+  horus-mysql:

@@ -4,11 +4,14 @@ import { randomBytes } from "node:crypto";
 import { chromium } from "playwright";
 import { eq, inArray, or, sql } from "drizzle-orm";
 import { db, pool } from "../src/db/index.ts";
-import { teams, members, requirements, sessions, auditLogs } from "../src/db/schema.ts";
+import { teams, members, requirements, sessions, auditLogs, notificationSettings } from "../src/db/schema.ts";
+import { claimScheduledDigest } from "../src/lib/digest-claim.ts";
+import { todayString } from "../src/lib/domain.ts";
 
 const base = process.env.TEST_BASE_URL || "http://localhost:3000";
 const suffix = Date.now().toString(36);
 const testUsername = `qa_${suffix}`;
+const claimId = `qa-claim-${suffix}`;
 let teamId, memberId, browser;
 const errors = [];
 async function request(path, { method = "GET", body, cookie = "", expected = 200 } = {}) {
@@ -25,6 +28,7 @@ const check = name => console.log(`PASS ${name}`);
 try {
   const baseline = await workspace();
   assert.equal(baseline.teams.length >= 4, true);
+  assert.equal(Number.isInteger(baseline.newWindowDays) && baseline.newWindowDays >= 1 && baseline.newWindowDays <= 90, true);
   assert.equal("webhook" in baseline.settings, false);
   assert.equal("signingSecret" in baseline.settings, false);
   assert.equal(baseline.members.some(m => "passwordHash" in m), false);
@@ -102,6 +106,18 @@ try {
   check("Password reset, re-enrollment and forced session invalidation");
   check("Notification validation and disabled-session rejection");
 
+  await db.insert(notificationSettings).values({ id: claimId, enabled: true, time: "09:30", webhook: "https://oapi.dingtalk.com/robot/send?access_token=acceptance", signingSecret: "", appUrl: base, lastRunDate: null, pendingItems: ["stale"] });
+  const claims = await Promise.all([claimScheduledDigest(todayString(), claimId), claimScheduledDigest(todayString(), claimId)]);
+  assert.equal(claims.filter(Boolean).length, 1, "exactly one concurrent digest claim must win");
+  const [claimed] = await db.select().from(notificationSettings).where(eq(notificationSettings.id, claimId));
+  assert.equal(claimed.lastRunDate, todayString());
+  assert.equal(await claimScheduledDigest(todayString(), claimId), false);
+  await db.update(notificationSettings).set({ enabled: false, lastRunDate: null }).where(eq(notificationSettings.id, claimId));
+  assert.equal(await claimScheduledDigest(todayString(), claimId), false);
+  await db.update(notificationSettings).set({ enabled: true, webhook: "", lastRunDate: null }).where(eq(notificationSettings.id, claimId));
+  assert.equal(await claimScheduledDigest(todayString(), claimId), false);
+  check("Scheduled digest claim is atomic and ignores disabled or unconfigured settings");
+
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.on("pageerror", e => errors.push(e.message));
@@ -136,6 +152,7 @@ try {
   check("Browser create, edit, block, unblock and release workflows");
 
   await page.goto(base, { waitUntil: "networkidle" });
+  assert.match(await page.locator(".date-range").innerText(), new RegExp(`近 ${baseline.newWindowDays} 天`));
   await page.locator(".focus-tab").filter({ hasText: "存在卡点" }).click();
   assert.equal(await page.locator(".requirement-table tbody tr").count(), baseline.requirements.filter(r => r.status === "active" && r.blocked).length);
   await page.locator(".focus-tab").filter({ hasText: "全部关注" }).click();
@@ -188,6 +205,8 @@ try {
   console.log("ALL ACCEPTANCE TESTS PASSED");
 } finally {
   if (browser) await browser.close();
+  try { await db.delete(notificationSettings).where(eq(notificationSettings.id, claimId)); }
+  catch (error) { console.error("Failed to remove digest claim fixture", error); }
   if (teamId) {
     await db.transaction(async tx => {
       const fixtureRows = await tx.select({ id: requirements.id }).from(requirements).where(eq(requirements.teamId, teamId));

@@ -6,7 +6,7 @@
 - **关联文档**：[《Horus 需求文档（V1）》](./horus-design.md)
 - **交付模式**：单兵 + AI 协同敏捷冲刺（5 个工作日上线）
 - **技术路线**：基于现有 `frontend/` Next.js 全栈原型直接生产化改造（Next.js App Router + Drizzle ORM + MySQL 8.0 + Docker 单实例容器化）
-- **执行状态（2026-10-16）**：第一步 M1 + M2 已完成代码改造；typecheck、lint、build 与默认安全模式验收通过。真实 MySQL 建表与完整 Playwright 验收仍需在具备 MySQL/Chromium 的环境中执行。
+- **执行状态（2026-10-16）**：M1–M4 代码已落地。M3 完成每日摘要数据库抢占、过期会话清理、新建窗口配置（`HORUS_NEW_WINDOW_DAYS` / `NEXT_PUBLIC_NEW_WINDOW_DAYS`，默认 7）及验收断言；M4 完成 standalone 构建、`frontend/Dockerfile`、`docker-compose.yml`、`.env.example` 与 [`docs/deployment-guide.md`](../deployment-guide.md)。真实 MySQL 上的 `drizzle-kit push`、Playwright 全量验收和 `docker compose` 健康检查仍需在具备 MySQL / Docker / Chromium 的环境执行。M5 内网投产与钉钉实测待现场进行。
 
 ---
 
@@ -245,6 +245,10 @@ HORUS_INIT_OWNER_NAME="团队负责人"
 
 # 系统对外访问地址（用于钉钉通知底部跳转链接兜底）
 APP_URL="http://horus.internal.company.com"
+
+# 「本周新建」滚动窗口，默认 7，允许 1–90。运行时 HORUS_* 优先，并下发给页面。
+HORUS_NEW_WINDOW_DAYS="7"
+NEXT_PUBLIC_NEW_WINDOW_DAYS="7"
 ```
 
 ---
@@ -289,7 +293,7 @@ APP_URL="http://horus.internal.company.com"
 | 风险项 | 可能性 | 影响度 | 应对与缓解措施 |
 | :--- | :---: | :---: | :--- |
 | **MySQL 与 PG 在 Drizzle ORM 下的隐式行为差异**（如 `boolean` 返回 `0/1`、JSON 反序列化、大小写敏感） | 中 | 高 | 1. 严格使用 Drizzle 的 `mysql-core` 类型定义（`boolean` 自动映射 `tinyint(1)` 并转为 JS `boolean`）；<br>2. MySQL 库表统一配置 `utf8mb4_0900_ai_ci`；<br>3. 使用 `tests/acceptance.mjs` 在真实 MySQL 实例上跑通全套断言。 |
-| **容器时区不一致导致钉钉 09:30 推送时间偏移或逾期判断跨日偏差** | 中 | 中 | 1. 代码层 `todayString()` 与 `scheduler.ts` 已显式指定 `timeZone: "Asia/Shanghai"`；<br>2. 在 `Dockerfile` 和 `docker-compose.yml` 中显式注入 `TZ=Asia/Shanghai` 环境变量。 |
+| **容器时区不一致导致钉钉 09:30 推送时间偏移或逾期判断跨日偏差** | 中 | 中 | 1. 代码层 `todayString()` 与 `shanghaiClock()` 已显式指定 `timeZone: "Asia/Shanghai"`，调度比较使用零填充的 `HH:mm`；<br>2. 在 `Dockerfile` 和 `docker-compose.yml` 中显式注入 `TZ=Asia/Shanghai`，MySQL 使用 `+08:00`。 |
 | **内网服务器无法访问公网导致构建失败或钉钉推送超时** | 低 | 中 | 1. 字体已采用本地 npm 包（`@fontsource-variable/inter` 与 `noto-sans-sc`），无需运行时请求 Google Fonts；<br>2. 支持在内网 CI 或有网机器构建 Docker 镜像后导出 tar 包部署；<br>3. 提前在生产宿主机通过 `curl -I https://oapi.dingtalk.com` 验证出网连通性。 |
 | **生产环境误开启演示模式导致未授权访问** | 低 | 高 | 将代码逻辑反转为**默认安全（Secure by Default）**：未配置环境变量时一律强制要求账号登录，仅当显式声明 `HORUS_DEMO_MODE="true"` 时才开启演示工作台。 |
 
@@ -297,9 +301,10 @@ APP_URL="http://horus.internal.company.com"
 
 ## 7. 下一步执行建议（Action Items）
 
-作为项目负责人，本计划确认后，我们可以立即在当前分支上按 **M1 → M4** 顺序直接编码落地：
+M1–M4 的代码改造已经落在当前分支。剩下的是环境验收和 M5 现场投产：
 
-1. **第一步（M1 & M2 代码实施已完成）**：已完成 MySQL 依赖与 Schema 切换、移除 `.returning()` / PostgreSQL 锁、生产默认鉴权、`db:init`、成员密码重置和团队信息编辑；待在真实 MySQL 环境执行建表与完整验收。
-2. **第二步（执行 M3 & M4）**：补齐调度加固、`Dockerfile`、`docker-compose.yml`、`.env.example`，并运行全量自动化测试验证。
+1. **第一步（M1 & M2 代码实施已完成）**：已完成 MySQL 依赖与 Schema 切换、移除 `.returning()` / PostgreSQL 锁、生产默认鉴权、`db:init`、成员密码重置和团队信息编辑。
+2. **第二步（M3 & M4 代码实施已完成）**：每日摘要在发信前用条件更新抢占 `last_run_date`；登录与调度 tick 清理过期会话；「本周新建」窗口可配置且默认仍为 7 天；验收脚本覆盖抢占与窗口展示。容器侧已提供 standalone Dockerfile、compose、环境模板和部署手册。待在具备 MySQL、Docker 与 Chromium 的环境执行 `npm run test:digest`、`npm run test:acceptance` 和 `docker compose up -d --build`。
+3. **第三步（执行 M5）**：内网部署、钉钉群机器人实测、真实团队/PM 初始化，以及负责人在手机端核对首页。现场步骤见 [`docs/deployment-guide.md`](../deployment-guide.md)。
 
-> 如你认可本计划，请直接告诉我**“按计划开始实现”**（或提出需要微调的点），我将立即开始推进代码改造。
+> 下一步是 M5：在内网按部署手册拉起容器，完成钉钉实测和真实团队初始化。若验收环境已就绪，直接说「开始 M5」即可。

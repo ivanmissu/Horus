@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { teams, members, requirements, notificationSettings, notificationLogs } from "@/db/schema";
 import { asc, desc } from "drizzle-orm";
 import { getActor, publicMember } from "./auth";
+import { newWindowDays } from "./domain";
 import type { WorkspaceData } from "./types";
 
 export async function loadWorkspace(): Promise<WorkspaceData> {
@@ -17,6 +18,6 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
   return {
     teams: allTeams, members: allMembers.map(publicMember), requirements: allRequirements,
     settings: { ...safeSettings, hasWebhook: !!webhook, hasSigningSecret: !!signingSecret, pendingCount: pendingItems.length },
-    logs, actor, demo, now: new Date().toISOString(),
+    logs, actor, demo, now: new Date().toISOString(), newWindowDays: newWindowDays(),
   };
 }

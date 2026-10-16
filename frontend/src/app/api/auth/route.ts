@@ -2,17 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { members, sessions } from "@/db/schema";
 import { ensureSeed } from "@/db/seed";
 import { AppError, hashToken } from "@/lib/auth";
+import { purgeExpiredSessions } from "@/lib/sessions";
 
 const attempts = new Map<string, { count: number; until: number }>();
 export async function POST(request: NextRequest) {
   try {
     if (process.env.HORUS_DEMO_MODE === "true") await ensureSeed();
-    await db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString()));
+    await purgeExpiredSessions();
     const body = await request.json();
     const jar = await cookies();
     if (body.action === "logout") {
