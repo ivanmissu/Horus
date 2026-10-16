@@ -1,3 +1,5 @@
 .env
 .env.local
 *.sql
+!deploy/mysql/*.sql
+backups/

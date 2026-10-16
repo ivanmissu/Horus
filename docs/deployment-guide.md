@@ -1,210 +1,371 @@
-# Horus 生产部署与运维手册
+# Horus 生产部署手册（Docker Compose · 内网单机版）
 
-- 适用版本：V1（Next.js 全栈单体 + MySQL 8.0，单实例容器）
-- 关联文档：[需求文档](./specs/horus-design.md)、[项目计划](./specs/horus-project-plan.md)
-- 时区：应用与数据库均按 `Asia/Shanghai`（UTC+8）运行。逾期判断和钉钉 09:30 调度不依赖数据库时区转换，时间以 ISO-8601 UTC 字符串保存。
+- 适用版本：V1（Next.js 全栈单体 + MySQL 8.0，单实例容器，**不要扩容 app 副本**）
+- 关联文档：[需求文档](./specs/horus-design.md) · [项目计划](./specs/horus-project-plan.md) · [M5 上线签收清单](./m5-uat-checklist.md)
+- 时区：应用与数据库均按 `Asia/Shanghai` 运行；业务时间以 ISO-8601 UTC 字符串存 `VARCHAR`，不依赖数据库时区转换。
 
-本手册覆盖首次部署、负责人账号初始化、钉钉机器人、备份恢复和版本升级。不要在生产环境开启 `HORUS_DEMO_MODE`。
+> **给运维同学的一句话**：把仓库拷到服务器 → 改一份 `.env` → 跑 `./scripts/deploy.sh` → 浏览器里给负责人设个密码，就能用了。下面是完整步骤和原理，出问题时按第 11 节排查。
 
 ---
 
-## 1. 部署前检查
+## 0. 速览：部署长什么样
 
-| 项 | 要求 |
-| --- | --- |
-| 运行时 | Docker Engine 24+ 与 Docker Compose v2 |
-| 资源 | 2 vCPU / 2 GB 内存足够（数据量为百级需求） |
-| 出网 | 构建机可访问 npm registry；运行中的应用容器可访问 `https://oapi.dingtalk.com` |
-| 端口 | 默认宿主机 `3000`。MySQL 不映射到宿主机，只在 compose 网络内可达 |
-| 访问协议 | 内网 HTTP 可用于受控验收，但密码在传输中没有 TLS 保护；正式投产建议用 HTTPS 反向代理，正确转发 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto: https`，并将 `APP_URL` 设为 HTTPS 地址。应用在 HTTPS 下设置 Secure Session Cookie，在 HTTP 下不设置 Secure，否则浏览器不会保存会话。 |
-| 密码 | `MYSQL_PASSWORD` 使用字母、数字、下划线，避免 `@ : / # ? $` 空格，以免写进 `DATABASE_URL` 或健康检查时被截断 |
-
-内网机器若不能在构建时访问公网，在有网环境执行 `docker compose build` 后 `docker save horus:local mysql:8.0`，再把 tar 包拷到内网 `docker load`。字体已打进 npm 包，运行时不请求 Google Fonts。
-
-上线前在生产宿主机确认钉钉可达：
-
-```bash
-curl -I https://oapi.dingtalk.com
+```
+内网同事浏览器 ──► http://<服务器IP>:3000 ──► horus-app 容器（Next.js，:3000）
+                                                  │
+                                                  └──► mysql 容器（MySQL 8.0，:3306，仅容器网络内可达）
+                                                         数据卷 horus-mysql（持久化，勿删）
+horus-app ──出站──► https://oapi.dingtalk.com（每日异常摘要推送，需防火墙放行出站 443）
 ```
 
+| 组件 | 说明 |
+|---|---|
+| `horus` 服务 | 镜像 `horus:local`，由 `frontend/Dockerfile` 多阶段构建（standalone 运行，启动时自动建表+初始化负责人） |
+| `mysql` 服务 | 官方 `mysql:8.0`，`utf8mb4 / utf8mb4_0900_ai_ci`，时区 `+08:00`，**3306 不映射到宿主机** |
+| 数据卷 | `horus-mysql`（MySQL 数据目录）。`docker compose down` 不删卷，`down -v` 会删——生产勿用 |
+| 配置 | 仓库根目录 `.env`（不进 Git，见 `.env.example`）；两个服务均配日志轮转（10 MB × 3）防磁盘打满 |
+
+交付文件清单（仓库内现成可用，无需另行开发）：
+
+| 文件 | 用途 |
+|---|---|
+| `docker-compose.yml` | 编排 app + MySQL，含健康检查、依赖顺序、数据卷 |
+| `.env.example` | 环境变量模板，复制为 `.env` 后改密码与地址 |
+| `scripts/deploy.sh` | **一键部署**：环境检查 → 构建启动 → 健康检查（支持 `--no-build`） |
+| `scripts/init-db.sh` | 数据库初始化/重跑校验：建表 + 初始负责人 + 7 表齐全性校验（幂等） |
+| `scripts/backup.sh` / `scripts/restore.sh` | 数据库备份（.sql.gz）/ 恢复（恢复前自动留底，需 `--yes` 确认） |
+| `deploy/mysql/01-schema.sql` | 7 张表建表 DDL（由 Drizzle Schema 生成），供 DBA 人工建库/评审 |
+| `deploy/mysql/02-init-owner.sql` | 初始负责人 + 通知设置 SQL 版（与应用 `db:init` 等价，幂等） |
+| `frontend/docker-entrypoint.sh` | 容器启动脚本：等 MySQL → 同步表结构 → 初始化负责人 → 启动应用 |
+
 ---
 
-## 2. 首次部署
+## 1. 服务器准备（部署前检查）
 
-在仓库根目录：
+| 项 | 要求 | 检查命令 |
+|---|---|---|
+| 操作系统 | 主流 Linux（Ubuntu/Debian/RHEL 系均可），x86_64 | `uname -m` |
+| Docker | Docker Engine 24+ 与 Compose v2 | `docker --version && docker compose version` |
+| 资源 | 2 vCPU / 2 GB 内存 / 预留 5 GB 磁盘足够（百级需求规模） | `free -h && df -h` |
+| 端口 | 宿主机 `3000`（可改）空闲且内网可达；**3306 不要对外开放** | `ss -tlnp \| grep 3000` |
+| 出站网络 | 构建时能拉镜像/下 npm 包；运行时能访问 `https://oapi.dingtalk.com` | `curl -I https://oapi.dingtalk.com` |
+| 时间 | 系统时间与时区正确（影响容器日志时间；业务时钟代码内固定上海时区） | `date` |
+
+未装 Docker 时（以 Ubuntu/Debian 为例，发行版仓库版本过低则按 [Docker 官方文档](https://docs.docker.com/engine/install/)装官方源版本）：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-v2   # 或官方源的 docker-ce + docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER   # 重新登录后生效；或全程用 sudo 跑 docker 命令
+docker --version && docker compose version
+```
+
+防火墙只放行应用端口（示例为 ufw，其他防火墙同理）：
+
+```bash
+sudo ufw allow 3000/tcp    # 若前面挂了 HTTPS 反向代理，改为只放行 80/443
+# 不要放行 3306
+```
+
+完全离线内网（构建机也上不了网）时走第 10 节的离线镜像交付。
+
+---
+
+## 2. 获取代码
+
+```bash
+git clone <仓库地址> horus && cd horus
+# 或将仓库压缩包拷到服务器后解压，进入根目录（能看到 docker-compose.yml 的那一层）
+ls   # 应能看到 docker-compose.yml、.env.example、frontend/、scripts/、deploy/
+```
+
+下文所有命令都在**仓库根目录**执行。
+
+---
+
+## 3. 配置 .env（唯一需要改的文件）
 
 ```bash
 cp .env.example .env
-# 编辑 .env：修改两个数据库密码、APP_URL、负责人账号名
-docker compose up -d --build
-docker compose ps
+openssl rand -hex 18   # 执行两次，分别用作下面两个密码（只含十六进制字符，天然满足字符集要求）
+vi .env
 ```
 
-`horus-app` 启动时会：
+必须改的项：
 
-1. 等待 MySQL 接受查询（最多 90 秒）；
-2. 执行 `drizzle-kit push --force` 同步 7 张表；
-3. 执行 `db:init`，幂等创建初始负责人和通知设置行；
-4. 监听 `0.0.0.0:3000`。
+| 变量 | 填什么 |
+|---|---|
+| `MYSQL_ROOT_PASSWORD` | 上一步生成的随机串。仅 MySQL 容器内部使用 |
+| `MYSQL_PASSWORD` | 另一个随机串。应用连库用。**只能用字母、数字、下划线**，否则拼 `DATABASE_URL` 时会被截断 |
+| `APP_URL` | 同事实际打开的地址，如 `http://192.168.1.50:3000` 或正式域名 `https://horus.example.internal`。钉钉摘要里的跳转链接以此为准（页面「通知设置」里另填的链接优先） |
+| `HORUS_PORT` | 宿主机映射端口，默认 `3000`；被占用就改这里，不要改容器内端口 |
+| `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | 初始负责人账号/姓名，默认 `admin` / `团队负责人`。**仅首次初始化时有效**，之后改这里不会改已有账号 |
 
-健康检查通过后：
+保持不动的项：`HORUS_DEMO_MODE=false`（生产红线：开启会灌演示数据并允许免登录）、`HORUS_NEW_WINDOW_DAYS=7` 与 `NEXT_PUBLIC_NEW_WINDOW_DAYS=7`（「本周新建」窗口，两者保持一致）、`TZ=Asia/Shanghai`。
+
+改完自查（不应再出现 `change_me`）：
 
 ```bash
-curl -fsS http://127.0.0.1:3000/api/health
-# {"ok":true}
+grep -n 'change_me' .env && echo '!! 还有默认密码没改' || echo '密码已改'
+grep -n 'HORUS_DEMO_MODE' .env
+chmod 600 .env   # 含明文密码，收紧权限；.env 已被 .gitignore 排除，不要提交、不要外发
 ```
 
-浏览器打开 `APP_URL`。未登录会跳到 `/login`，登录页不出现演示账号。
-
-### 2.1 负责人首次设密
-
-`db:init` 默认创建账号 `admin`（可用 `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` 覆盖），密码留空。
-
-1. 打开 `/login`，输入负责人账号。
-2. 系统识别为首次登录，设置 8–72 位密码。
-3. 密码以 bcrypt（成本因子 12）保存。服务端会话只存 SHA-256 摘要。
-
-再次执行 `db:init` 不会重置已有负责人密码。若账号建错且尚未投产，可在备份后清空库卷重来（见第 6 节）。
-
-### 2.2 初始化团队与 PM
-
-用负责人账号：
-
-1. 「成员与团队」创建 3–5 个团队，按需改名称、简介、颜色。
-2. 在「阶段模板」按团队增删、改名、调序。删除仍有需求的阶段时必须指定迁移目标。
-3. 预建不超过 3 个 PM 账号并绑定团队。把账号告诉对应 PM，让他们首次登录自行设密。
-4. PM 遗忘密码时，负责人点「重置密码」。该操作清空密码哈希并注销其全部会话，下次登录重新设密。停用成员同样立即下线。
-
-没有自助注册，也没有找回密码。
+> `.env` 里的 `DATABASE_URL` 是给本机 `npm run dev` 用的；容器内 compose 会自动拼成 `mysql://…@mysql:3306/…`（主机名 `mysql` 是 compose 服务名），无需手改。
 
 ---
 
-## 3. 钉钉每日异常摘要
+## 4. 一键启动
 
-1. 在内部群添加自定义机器人。安全设置二选一：
-   - 加签：把 `SEC` 密钥填到 Horus「加签密钥」；
-   - 自定义关键词：关键词设为 `Horus`。
-2. Webhook 必须是 `https://oapi.dingtalk.com/robot/send?access_token=…`。接口不会把已保存的 Webhook 或密钥返回给浏览器。
-3. 「系统访问链接」填内网同事打得开的地址（与 `APP_URL` 一致），摘要底部用它跳回工作台。
-4. 推送时间默认 `09:30`，时区固定为北京时间。保存后点「立即发送测试」，到群里核对排版和链接。测试发送不占用当日定时名额。
-5. 打开「每日异常摘要」。应用进程需保持在线；调度每分钟检查一次。
+```bash
+chmod +x scripts/*.sh   # 若脚本没有执行权限
+./scripts/deploy.sh
+```
 
-发送规则：
+脚本依次做四件事，任一步失败都会停下并给出原因，**不会带病继续**：
 
-- 内容只含卡点与高优逾期，不是全量需求。
-- 到达设定时间后，用数据库条件更新抢占当天执行权。多进程或重启重叠时，同一天只会有一个实例发出定时摘要。
-- 推送失败会写失败日志，并把摘要放进待重试列表。次日定时发送时去重合并，不在页面弹错误。
-- 失败详情只记录「机器人返回错误代码」或「网络连接失败」，不写 Webhook。
+1. 检查 Docker/Compose 在运行、`.env` 存在；
+2. 校验密码已改、字符集合法、生产未开演示模式（演示需显式 `ALLOW_DEMO=1`，生产不要用）；
+3. `docker compose config` 校验后 `docker compose up -d --build`（首次需拉取 `node:22`、`mysql:8.0` 镜像并构建，视网速约数分钟）；
+4. 轮询 `http://127.0.0.1:${HORUS_PORT}/api/health` 最长 180 秒，通过后打印下一步指引。
+
+等价的手工命令（不用脚本时）：
+
+```bash
+docker compose up -d --build
+docker compose ps                    # mysql 与 horus 都应为 healthy
+curl -fsS http://127.0.0.1:3000/api/health   # {"ok":true}（端口改过则换成对应端口）
+docker compose logs -f horus         # 看启动过程，Ctrl+C 退出不影响容器
+```
+
+**容器启动时自动完成的初始化**（`docker-entrypoint.sh`，无需人工干预）：
+
+1. 等待 MySQL 可查询（最长 90 秒，靠 compose 健康检查 + 脚本双重等待）；
+2. `drizzle-kit push` 同步 7 张表结构，并逐表校验齐全，缺表直接启动失败（不会假装成功）；
+3. `db:init` 幂等创建初始负责人与通知设置默认行——每次启动都跑，但**不覆盖**已有负责人密码和已保存的钉钉配置；
+4. 以 standalone 模式监听 `0.0.0.0:3000`，进程内每分钟调度检查钉钉摘要与过期会话清理（单实例假设，勿扩容）。
 
 ---
 
-## 4. 环境变量
+## 5. 数据库初始化（三条路径，按需选一）
+
+正常情况**路径 A 就够了**，B/C 是给重跑校验和 DBA 人工管库场景准备的。
+
+### 路径 A：全自动（默认，推荐）
+
+即第 4 节的启动流程：建库建表、建负责人全自动完成，什么都不用做。
+
+### 路径 B：手工重跑/验收校验
+
+容器已启动后，想重跑初始化或核查数据库状态时：
+
+```bash
+./scripts/init-db.sh
+# 依次：容器内 drizzle-kit push 同步表结构 -> db:init 创建/保留负责人 -> 校验输出
+# 期望结尾：tables=7 / owner=admin password_set=0|1 / notification_settings=1
+```
+
+幂等性说明：表已存在则结构同步为空操作；负责人已存在则保留原样（姓名、密码都不动）；通知行用 `INSERT IGNORE` 语义。**它不会重置任何人的密码**——PM 忘密码走页面上负责人「重置密码」，不要指望重跑脚本。
+
+只想看数据、不想跑脚本时，直接查库（密码从容器环境读取，不落命令行）：
+
+```bash
+docker compose exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SHOW TABLES; SELECT id,username,name,role,active FROM horus_members;"'
+```
+
+### 路径 C：DBA 人工 SQL 初始化（不用容器自动建表时）
+
+适合数据库由 DBA 统一管理、不允许应用自动改表结构的场景：
+
+```sql
+-- 1) DBA 用 root 先建库与应用账号（密码替换为 .env 中的 MYSQL_PASSWORD）
+CREATE DATABASE horus CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'horus'@'%' IDENTIFIED BY '<MYSQL_PASSWORD>';
+GRANT ALL PRIVILEGES ON horus.* TO 'horus'@'%';
+```
+
+```bash
+# 2) 在空库依次执行建表与初始数据（两个脚本头部都写了注意事项，先看再跑）
+docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < deploy/mysql/01-schema.sql
+docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < deploy/mysql/02-init-owner.sql
+# 3) 之后照常 ./scripts/deploy.sh 启动应用；启动时的结构同步与 db:init 是幂等的，不会与手工结果冲突
+```
+
+注意事项：
+
+- `01-schema.sql` 是一次性建表脚本（7 张表：`horus_teams`、`horus_members`、`horus_requirements`、`horus_sessions`、`horus_audit_logs`、`horus_notification_settings`、`horus_notification_logs`），对已有数据的库重复执行会因表/外键已存在报错，不要拿它当升级脚本；结构变更仍走应用启动时的 Drizzle 同步或 DBA 评审后的变更单。
+- `02-init-owner.sql` 执行前可改文件头的 `@owner_username` / `@owner_name`；与 `db:init` 二选一即可，重复执行无副作用。若走 compose 部署，`.env` 里的 `HORUS_INIT_OWNER_*` 应与 SQL 中一致，避免两处口径不同。
+- 首选仍是路径 A：手工 SQL 一旦与 `frontend/src/db/schema.ts` 漂移，启动校验会以缺表/结构同步失败的形式暴露，但排查成本高于自动路径。
+
+### 初始化做了/没做什么（避免误会）
+
+| 做了 | 没做 |
+|---|---|
+| 建 7 张表、建负责人（密码为空）、建通知设置默认行 | 不灌任何演示团队/需求（演示数据只在 `HORUS_DEMO_MODE=true` 时出现） |
+| 每次启动重复执行且幂等 | 不给负责人预设密码——密码由本人在首次登录时设置（见第 6 节） |
+
+账号建错且**尚未投产**时，宁可推倒重来也不要改库凑合：备份后 `docker compose down -v` 清卷，按第 4 节重新部署（**会清空全部数据，仅限未投产时**）。已投产后账号问题一律走页面功能（改名、停用、重置密码）。
+
+---
+
+## 6. 负责人首次登录
+
+1. 浏览器打开 `APP_URL`，未登录自动跳 `/login`，页面**不应**出现演示账号入口（出现了说明演示模式被打开，立即按第 11 节处理）。
+2. 输入负责人账号（默认 `admin`），系统识别为首次登录，设置 8–72 位密码。密码以 bcrypt（成本因子 12）存库，会话只在服务端存 SHA-256 摘要。
+3. 再执行 `./scripts/init-db.sh` 或重启容器都不会重置这个密码。PM 忘密码时由负责人在页面点「重置密码」，其旧会话立即失效，下次登录重新设密——没有自助找回，这是产品定版行为。
+4. 验收锚点：换一台内网电脑和一部手机打开 `APP_URL`，确认都能到登录页、手机无横向滚动。协议说明：内网纯 HTTP 时密码走明文传输，仅适合受控内网验收；正式投产建议按第 9.3 节挂 HTTPS 反向代理。
+
+---
+
+## 7. 业务初始化（负责人在页面完成，不用碰数据库）
+
+1. 「成员与团队」→ 创建 3–5 个真实团队，改好名称、简介、颜色。
+2. 「阶段模板」→ 按团队增删、改名、调序阶段。删除仍有需求的阶段时必须指定迁移目标，这是防丢数据的强制校验，前后端都会拦。
+3. 预建 ≤3 个 PM 账号并绑定团队，把账号告知本人首次登录设密；顺手用测试账号验证停用/重置密码后旧会话立即 401。
+4. PM 录入首批在途需求。抽查推进（只能向前跳、不能回退）、卡点标记、推到末阶段自动归档三条规则。
+5. 负责人在桌面与手机核对首页「近 7 天新建 ∪ 卡点 ∪ 高优逾期」按团队分组展示。
+
+逐项签收表在 [M5 清单](./m5-uat-checklist.md) 的 T5.3/T5.4，本节全部做完才算业务初始化完成。
+
+---
+
+## 8. 钉钉每日异常摘要联调
+
+1. 内部群添加自定义机器人，安全设置二选一：加签（把 `SEC` 密钥填进 Horus）或自定义关键词 `Horus`。
+2. 在 Horus「通知设置」填 Webhook（必须是 `https://oapi.dingtalk.com/robot/send?access_token=…`）、可选加签密钥、工作台链接（填同事打得开的内网地址）。Webhook 与密钥保存后不会回显给浏览器，日志也不记录明文。
+3. 点「立即发送测试」，到群里确认**实际收到**、排版与链接可点。测试发送不占用当日定时名额。
+4. 开启「每日异常摘要」（默认 09:30，北京时间，页面可改）。**次日**到点确认只发一条且内容准确——定时到达这项必须隔日验收，不要用测试发送代替。
+5. 发送失败会写失败日志并暂存摘要，次日定时去重合并重发，页面不弹打扰式报错。到点没消息按第 11 节查。
+
+前提：运行中的容器能出站访问钉钉（第 1 节已用 `curl -I https://oapi.dingtalk.com` 在宿主机验过；若宿主机走代理而容器不走代理，需给容器配代理或让运维放行容器网段出站）。
+
+---
+
+## 9. 日常运维
+
+### 9.1 常用命令速查
+
+```bash
+docker compose ps                          # 状态与健康
+docker compose logs -f horus               # 应用日志（跟随，Ctrl+C 退出不影响服务）
+docker compose logs --tail 100 mysql       # 数据库日志
+docker compose restart horus               # 只重启应用（会重跑建表同步+db:init，幂等安全）
+docker compose stop                        # 停服（保留容器与数据）
+docker compose start                       # 启服
+curl -fsS http://127.0.0.1:${HORUS_PORT:-3000}/api/health   # 健康自检
+./scripts/init-db.sh                       # 核查 7 表与负责人状态
+docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"'   # root 应急进库（密码读容器环境变量）
+```
+
+不要用 `docker compose down -v` 做日常停服——`-v` 会删数据卷。只停服务用 `stop`，删容器留数据用 `down`（不带 `-v`）。
+
+### 9.2 备份与恢复
+
+```bash
+./scripts/backup.sh                        # 默认输出 backups/horus-年月日-时分秒.sql.gz，并做非空与完整性检查
+./scripts/backup.sh /mnt/backup/horus.sql.gz   # 也可以直接指定输出路径
+```
+
+- 备份经容器内 `mysqldump --single-transaction` 导出，不需要把 3306 暴露到宿主机。
+- **备份文件必须再拷一份到公司规定的备份位置**（另一台机器/备份盘），只留在应用宿主机不算备份完成。恢复目标是「能把库找回」，建议每日一次、保留近 7–14 天。
+- 恢复（危险，会覆盖当前库）：
+
+```bash
+./scripts/restore.sh backups/horus-20261019-090000.sql.gz --yes
+# 脚本会先自动备份当前库为 backups/pre-restore-*.sql.gz，再停应用、恢复、启应用、跑健康检查
+```
+
+恢复演练只在隔离/测试库做，不要拿生产库练手。恢复后登录页面抽查团队与需求再宣布完成。
+
+### 9.3 HTTPS 反向代理（正式投产建议）
+
+应用本体只监听 HTTP，把 TLS 终结放在现有网关/Nginx 上。关键是转发头要全，否则同源校验与安全 Cookie 会出问题：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+同时把 `.env` 的 `APP_URL` 改为 `https://正式域名` 后 `./scripts/deploy.sh --no-build`（或 `docker compose up -d`）让钉钉链接与新地址一致。应用在 HTTPS 下自动给会话 Cookie 加 Secure，HTTP 下不加（加了浏览器不保存会话），二者自动适配，无需改代码。
+
+### 9.4 升级与回滚
+
+```bash
+./scripts/backup.sh                        # 1) 先备份（铁律）
+git pull                                   # 2) 拉新代码（或解压新版本包）
+./scripts/deploy.sh                        # 3) 重新构建并滚动启动，健康检查通过才算完
+```
+
+- 启动时的结构同步对无变更是空操作；`drizzle-kit push --force` 会自动接受 Drizzle 认为可能丢数据的变更（如删列），**发版前先看 schema diff**，不能接受自动删列时停在旧版，走 DBA 变更单手工迁移后再升级。
+- 若改过「本周新建」窗口，`.env` 中 `HORUS_NEW_WINDOW_DAYS` 与 `NEXT_PUBLIC_NEW_WINDOW_DAYS` 保持一致再构建（前者运行时下发页面，后者是构建期兜底）。
+- 回滚：切回上一版代码重新 `./scripts/deploy.sh`，并用升级前备份 `./scripts/restore.sh <备份> --yes` 连库一起回退。不要只回滚应用而留下不兼容的新表结构。
+
+---
+
+## 10. 离线交付（服务器不能访问外网时）
+
+在有网机器上（架构须与内网服务器一致，均为 x86_64）：
+
+```bash
+docker compose build
+docker save horus:local mysql:8.0 | gzip > horus-images.tar.gz
+# 把 仓库目录 + horus-images.tar.gz 一起拷到内网服务器
+```
+
+内网服务器上：
+
+```bash
+docker load < horus-images.tar.gz
+cp .env.example .env && vi .env        # 按第 3 节改密码与 APP_URL
+./scripts/deploy.sh --no-build         # 镜像已就位，跳过构建直接启动+健康检查
+```
+
+注意：`--no-build` 不会校验镜像是否为最新代码版本，离线包打出后不要再改代码才拷过去；字体已打进 npm 依赖，运行时不请求 Google Fonts，无外网不影响页面。
+
+---
+
+## 11. 故障排查
+
+先收集现场：`docker compose ps`、`docker compose logs --tail 100 horus mysql`、`.env` 相关行（打码密码后）、报错时间点。不要一上来删卷重装。
+
+| 现象 | 多半原因 | 处理 |
+|---|---|---|
+| `deploy.sh` 报密码仍为默认值/字符非法 | `.env` 没改或密码带特殊字符 | 按第 3 节用 `openssl rand -hex 18` 重新生成，只用字母数字下划线 |
+| `horus` 一直重启，日志 `DATABASE_URL is required` | `.env` 不在仓库根目录，或 compose 没读到 | 确认在根目录执行、`MYSQL_PASSWORD` 非空；`docker compose config` 看注入值 |
+| 日志卡在 `Waiting for MySQL` 超 90 秒 | MySQL 没起来：密码含特殊字符、或数据卷是用另一套密码初始化的旧卷 | 先看 `docker compose logs mysql`；确认是旧卷且数据可弃才 `down -v` 重建（**未投产限定**），已投产改为对齐密码 |
+| `Schema sync did not create: …` | `drizzle-kit push` 在 MySQL 8.0 上失败（版本/权限） | 看同段日志的 drizzle 报错；确认库账号对 `horus` 库有全权；把 `deploy/mysql/01-schema.sql` 交 DBA 先行建表再重启（路径 C） |
+| `/api/health` 500 但页面能开 | 应用查库失败 | 确认容器内 `DATABASE_URL` 主机名是 `mysql` 不是 `127.0.0.1`；查 MySQL 健康状态 |
+| 登录页出现演示账号入口 | `HORUS_DEMO_MODE=true` 被打开 | 立即改回 `false` 并 `docker compose up -d`；检查演示数据是否已灌入（空库才灌），已灌入且未投产可清卷重来 |
+| 端口被占用，容器起不来 | 宿主机 3000 已有进程 | 改 `.env` 的 `HORUS_PORT` 后重新 `up -d`，同步更新 `APP_URL` 端口 |
+| 09:30 没有群消息 | 容器当时不在线/未开启摘要/Webhook 未保存/容器出站不通 | 查页面「推送记录」与当天日志；确认第 8 节开关与出站；失败项次日会自动合并重发，不要手工改 `last_run_date` |
+| 同一天收到两条定时摘要 | 不应发生（发信前有数据库抢占） | 区分是否为一条「立即发送测试」+一条定时（这是正常）；两条都是定时则保留日志报障 |
+| 页面「本周新建」天数不对 | `HORUS_NEW_WINDOW_DAYS` 与预期不符 | 该值随接口下发，改 `.env` 后重启 `horus` 即可；构建兜底值不一致时按 9.4 同步后重建 |
+| 手机/异地电脑打不开 | 防火墙未放行、或 `APP_URL` 写了 `localhost` | 放行应用端口（第 1 节）；`APP_URL` 必须是客户端可达地址，不能写 `localhost` 给别人用 |
+| 经反向代理写操作被拦/登录态丢失 | 转发头不全 | 按 9.3 补齐 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto`，且 `APP_URL` 与实际访问协议域名一致 |
+
+任何健康检查、登录、钉钉实收、数据核对或备份环节失败，**暂停上线**，保留日志与数据卷，按 9.4 回滚路径处理，不要删卷赌一把。现场逐项签收走 [M5 清单](./m5-uat-checklist.md)：T5.1～T5.4 全过且负责人确认后，才把状态改为「正式上线」。
+
+---
+
+## 附录：环境变量全表
 
 | 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `MYSQL_ROOT_PASSWORD` | 无，必填 | 仅 MySQL 容器使用 |
-| `MYSQL_DATABASE` / `MYSQL_USER` / `MYSQL_PASSWORD` | `horus` / `horus` / 必填 | 应用账号，权限限于业务库 |
-| `DATABASE_URL` | compose 内自动拼装 | 本地 `npm run dev` 时指向 `127.0.0.1` |
-| `HORUS_DEMO_MODE` | `false` | 只有显式 `true` 才灌演示数据并允许免登录。生产禁止 |
-| `HORUS_INIT_OWNER_USERNAME` | `admin` | 仅在还没有 `owner` 行时使用 |
-| `HORUS_INIT_OWNER_NAME` | `团队负责人` | 同上 |
-| `APP_URL` | `http://localhost:3000` | 钉钉链接兜底 |
-| `HORUS_NEW_WINDOW_DAYS` | `7` | 「本周新建」滚动窗口，1–90。运行时生效，并下发给页面 |
-| `NEXT_PUBLIC_NEW_WINDOW_DAYS` | `7` | 镜像构建参数，作为客户端兜底。改窗口后请与上一行保持一致并重新构建 |
+|---|---|---|
+| `MYSQL_ROOT_PASSWORD` | 必填 | MySQL root，仅容器内部 |
+| `MYSQL_DATABASE` / `MYSQL_USER` / `MYSQL_PASSWORD` | `horus` / `horus` / 必填 | 应用库与账号，密码仅字母数字下划线 |
+| `DATABASE_URL` | compose 内自动拼装 | 仅本机 `npm run dev` 时手填，指向 `127.0.0.1` |
+| `HORUS_DEMO_MODE` | `false` | 生产红线。只有显式 `true` 才灌演示数据并免登录 |
+| `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | `admin` / `团队负责人` | 仅无负责人时用于首次创建 |
+| `APP_URL` | `http://localhost:3000` | 对外访问地址，钉钉链接兜底（页面通知设置为准） |
+| `HORUS_NEW_WINDOW_DAYS` / `NEXT_PUBLIC_NEW_WINDOW_DAYS` | `7` / `7` | 「本周新建」窗口（1–90），运行时/构建兜底，保持一致 |
 | `HORUS_PORT` | `3000` | 宿主机映射端口 |
-| `HORUS_DB_CONNECTION_LIMIT` | `10` | MySQL 连接池 |
-| `TZ` | `Asia/Shanghai` | 容器日志时区。业务时钟在代码里写死上海时区 |
+| `HORUS_DB_CONNECTION_LIMIT` | `10` | MySQL 连接池上限 |
+| `TZ` | `Asia/Shanghai` | 容器日志时区；业务时钟代码内固定上海时区 |
 
----
-
-## 5. 备份与恢复
-
-备份不需要把 3306 暴露到宿主机。在仓库根目录执行（密码来自容器环境变量，不会出现在命令行参数里）：
-
-```bash
-mkdir -p backups
-docker compose exec -T mysql sh -c 'mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --single-transaction --databases "$MYSQL_DATABASE"' > "backups/horus-$(date +%F).sql"
-```
-
-恢复前先停应用，避免恢复过程中继续写入：
-
-```bash
-docker compose stop horus
-docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < backups/horus-2026-10-16.sql
-docker compose start horus
-```
-
-恢复目标与需求文档一致：数据量小，能把库找回来即可。建议每天把 `backups/` 拷到现有 MySQL 备份目录，不要只留在应用宿主机磁盘上。
-
-根账号应急入口：
-
-```bash
-docker compose exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD"
-```
-
----
-
-## 6. 升级
-
-1. 按第 5 节备份。
-2. 拉取新版本代码。若本周改过 `HORUS_NEW_WINDOW_DAYS`，同步 `.env` 里的 `NEXT_PUBLIC_NEW_WINDOW_DAYS`。
-3. 重新构建并启动：
-
-```bash
-docker compose up -d --build
-docker compose ps
-curl -fsS http://127.0.0.1:${HORUS_PORT:-3000}/api/health
-```
-
-启动脚本会再次 `drizzle-kit push --force`。无结构差异时这是空操作。`--force` 会自动接受 Drizzle 判定为可能丢数据的语句（例如删列）。升级前看 schema diff；不能接受自动删列时，先停在旧版本，手工迁移后再升级。
-
-`db:init` 每次启动都会跑，但不会覆盖已有负责人或已保存的钉钉配置。
-
-回滚：用上一版镜像重新 `up`，再用第 5 节的 SQL 恢复。不要只回滚应用、留下不兼容的新表结构。
-
----
-
-## 7. 故障排查
-
-| 现象 | 处理 |
-| --- | --- |
-| `horus-app` 一直重启，日志是 `DATABASE_URL is required` | `.env` 未放到仓库根目录，或 `MYSQL_PASSWORD` 为空 |
-| 日志停在 `Waiting for MySQL` | `docker compose logs mysql`。常见原因是 root 密码含特殊字符，或数据卷是用另一套密码初始化的。空库可 `docker compose down` 后删除卷重建（会丢数据） |
-| `/api/health` 500 | 应用已起来但查库失败。核对 compose 注入的 `DATABASE_URL` 主机名是 `mysql` 不是 `127.0.0.1` |
-| 登录页出现演示账号 | `HORUS_DEMO_MODE=true`。生产立刻改回 `false` 并重建容器。演示模式会在空库灌入虚拟团队 |
-| 09:30 没有群消息 | 容器当时必须在线；「每日异常摘要」已开启；Webhook 已保存；当天 `last_run_date` 未被提前占住。看「推送记录」。失败项会在次日合并 |
-| 同一天收到两条定时摘要 | 不应发生。定时路径在发信前用条件更新抢占 `last_run_date`。手动「立即发送测试」不占这个名额，可以和定时各发一条 |
-| 页面「本周新建」天数和预期不符 | 看运行中的 `HORUS_NEW_WINDOW_DAYS`。它会随 `/api/workspace` 下发。改完后重启容器即可，不必为了这一项单独改前端代码 |
-
-查看日志：
-
-```bash
-docker compose logs -f horus
-docker compose logs --tail 100 mysql
-```
-
----
-
-## 8. 本地开发（非容器）
-
-需要 Node.js 22+ 和一台 MySQL 8.0。库和账号建好后：
-
-```bash
-cd frontend
-cp .env.example .env
-npm install
-npm run db:push
-npm run db:init
-npm run dev
-```
-
-验证：
-
-```bash
-npm run test:domain
-npm run typecheck
-npm run lint
-npm run build
-```
-
-`npm run test:digest` 需要可用的 `DATABASE_URL`，它只插入临时通知行并验证抢占，不调用钉钉。`npm run test:acceptance` 还需要以 `HORUS_DEMO_MODE=true` 启动应用，并安装 Playwright Chromium。不要对生产库跑验收脚本。
+...[truncated 15820 chars]

@@ -7,6 +7,9 @@ services:
     image: mysql:8.0
     container_name: horus-mysql
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-horus}
@@ -35,6 +38,9 @@ services:
     image: horus:local
     container_name: horus-app
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     depends_on:
       mysql:
         condition: service_healthy
