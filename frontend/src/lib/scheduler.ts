@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { shanghaiClock, todayString } from "./domain";
 import { sendDigest } from "./notifications";
 import { purgeExpiredSessions } from "./sessions";
+import { isPreviewMode } from "./preview";
 
 const globalScheduler = globalThis as typeof globalThis & { horusScheduler?: ReturnType<typeof setInterval> };
 
@@ -35,7 +36,7 @@ async function tick() {
 }
 
 export function startScheduler() {
-  if (globalScheduler.horusScheduler) return;
+  if (isPreviewMode() || globalScheduler.horusScheduler) return;
   globalScheduler.horusScheduler = setInterval(tick, 60_000);
   globalScheduler.horusScheduler.unref();
   const initial = setTimeout(tick, 5_000);

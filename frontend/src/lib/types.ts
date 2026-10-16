@@ -13,6 +13,10 @@ export type WorkspaceData = {
   logs: NotificationLog[];
   actor: Member;
   demo: boolean;
+  /** Explicit read-only, database-free local preview. Never enabled in production. */
+  preview?: boolean;
+  /** JS-readable session transport, enabled only in Arena's disposable iframe preview. */
+  embeddedAuth?: boolean;
   now: string;
   newWindowDays: number;
 };

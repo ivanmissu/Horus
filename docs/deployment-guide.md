@@ -16,6 +16,7 @@
 | 资源 | 2 vCPU / 2 GB 内存足够（数据量为百级需求） |
 | 出网 | 构建机可访问 npm registry；运行中的应用容器可访问 `https://oapi.dingtalk.com` |
 | 端口 | 默认宿主机 `3000`。MySQL 不映射到宿主机，只在 compose 网络内可达 |
+| 访问协议 | 内网 HTTP 可用于受控验收，但密码在传输中没有 TLS 保护；正式投产建议用 HTTPS 反向代理，正确转发 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto: https`，并将 `APP_URL` 设为 HTTPS 地址。应用在 HTTPS 下设置 Secure Session Cookie，在 HTTP 下不设置 Secure，否则浏览器不会保存会话。 |
 | 密码 | `MYSQL_PASSWORD` 使用字母、数字、下划线，避免 `@ : / # ? $` 空格，以免写进 `DATABASE_URL` 或健康检查时被截断 |
 
 内网机器若不能在构建时访问公网，在有网环境执行 `docker compose build` 后 `docker save horus:local mysql:8.0`，再把 tar 包拷到内网 `docker load`。字体已打进 npm 包，运行时不请求 Google Fonts。

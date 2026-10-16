@@ -1,9 +1,11 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { createHash } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { members, sessions } from "@/db/schema";
 import { ensureSeed } from "@/db/seed";
+import { isPreviewMode } from "./preview";
+import { previewActor } from "./preview-data";
 import type { Member } from "./types";
 
 export class AppError extends Error {
@@ -16,9 +18,13 @@ export function publicMember(member: typeof members.$inferSelect): Member {
 export function hashToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
 export function isDemoMode() { return process.env.HORUS_DEMO_MODE === "true"; }
 export async function getActor(): Promise<{ actor: Member; demo: boolean }> {
+  if (isPreviewMode()) return { actor: previewActor, demo: true };
   const demoMode = isDemoMode();
   if (demoMode) await ensureSeed();
-  const token = (await cookies()).get("horus_session")?.value;
+  const authorization = process.env.HORUS_EMBEDDED_PREVIEW === "true"
+    ? (await headers()).get("authorization") : null;
+  const bearer = authorization?.match(/^Bearer ([0-9a-f]{64})$/i)?.[1];
+  const token = bearer || (await cookies()).get("horus_session")?.value;
   if (token) {
     const [result] = await db.select({ member: members }).from(sessions)
       .innerJoin(members, eq(sessions.memberId, members.id))

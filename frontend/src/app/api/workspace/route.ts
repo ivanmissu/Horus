@@ -4,6 +4,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { teams, members, requirements, auditLogs, notificationSettings, sessions } from "@/db/schema";
 import { loadWorkspace } from "@/lib/data";
+import { isPreviewMode } from "@/lib/preview";
 import { getActor, AppError, assertOwner, assertTeam } from "@/lib/auth";
 import { DEFAULT_STAGES } from "@/lib/domain";
 import { sendDigest, validateWebhook } from "@/lib/notifications";
@@ -37,6 +38,7 @@ export async function GET() {
 }
 export async function POST(request: NextRequest) {
   try {
+    if (isPreviewMode()) throw new AppError("只读预览：未连接 MySQL，不能保存操作", 503);
     const origin = request.headers.get("origin");
     if (origin && new URL(origin).host !== request.headers.get("host") && new URL(origin).host !== request.headers.get("x-forwarded-host")) throw new AppError("不允许跨站操作", 403);
     const { actor } = await getActor();

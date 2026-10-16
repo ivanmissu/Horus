@@ -39,6 +39,18 @@ npm run dev
 
 **不要在生产环境开启 `HORUS_DEMO_MODE`。** 生产模式默认强制登录，不会自动创建演示业务数据。
 
+### 无数据库的界面预览
+
+如果当前环境没有 MySQL，只需查看页面布局与示例数据，可在 `frontend/` 运行：
+
+```bash
+HORUS_PREVIEW_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+```
+
+访问 `http://localhost:3000`。这是**仅在 `NODE_ENV=development` 生效的只读预览**：使用内存示例数据，不会连接 MySQL、灌入数据库或发送钉钉通知；登录和全部写接口返回 503，页面显示明显提示。`/api/health` 返回 `{"ok":true,"mode":"read-only-preview"}`，**不代表生产数据库健康**。完整可交互演示仍需按上文配置 MySQL 并显式开启 `HORUS_DEMO_MODE=true`。生产构建即使设置了 `HORUS_PREVIEW_MODE` 也不会启用预览。
+
+在 Arena 的 HTTPS iframe 中验证**真实 MySQL 登录**时，可显式设置 `HORUS_EMBEDDED_PREVIEW=true` 启动应用。部分浏览器彻底阻止第三方 Cookie，因此此模式额外在 `sessionStorage` 保存当前标签页的临时令牌，并通过 `Authorization` 请求工作台；关闭标签页后需要重新登录。此令牌可被页面 JavaScript 读取，**仅允许在隔离的沙箱预览使用，绝不可用于真实业务或内网投产**。常规部署不要设置这个变量，继续使用 HttpOnly Cookie 策略。避免在登录期间切换开发热更新版本，必要时用 `npm run build` 生成稳定的 standalone 预览。
+
 ## 账号与安全
 
 正式模式由负责人预建成员账号。成员首次登录时设置 8–72 位密码，密码使用 bcrypt 哈希；会话 Cookie 为 HTTP-only，服务端仅存 SHA-256 token 摘要。负责人可以重置 PM 密码（同时使其所有会话失效）或停用成员（立即注销会话）。无自助注册与密码找回。
