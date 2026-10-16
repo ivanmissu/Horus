@@ -14,5 +14,6 @@ export type WorkspaceData = {
   actor: Member;
   demo: boolean;
   now: string;
+  newWindowDays: number;
 };
 export type FocusFilter = "all" | "new" | "blocked" | "overdue";

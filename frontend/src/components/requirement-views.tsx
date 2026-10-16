@@ -21,12 +21,12 @@ function Metrics({ onSelect }: { onSelect: (filter: FocusFilter) => void }) {
   const { data } = useWorkspace();
   const router = useRouter();
   const active = data.requirements.filter(r => r.status === "active");
-  const fresh = active.filter(r => isNew(r, data.now));
+  const fresh = active.filter(r => isNew(r, data.now, data.newWindowDays));
   const blocked = active.filter(r => r.blocked);
   const overdue = active.filter(r => isOverdue(r, data.now));
   const stats = [
     { label: "全部在途", value: active.length, icon: Layers3, color: "purple", foot: `${data.teams.length} 个团队正在协同推进`, action: () => router.push("/requirements"), spark: "M2 23 11 20 20 22 29 13 38 15 47 9 56 11 65 3" },
-    { label: "本周新建", value: fresh.length, icon: Sparkles, color: "blue", foot: "近 7 天进入研发流程", action: () => onSelect("new"), spark: "M2 24 11 23 20 16 29 19 38 10 47 12 56 6 65 3" },
+    { label: "本周新建", value: fresh.length, icon: Sparkles, color: "blue", foot: `近 ${data.newWindowDays} 天进入研发流程`, action: () => onSelect("new"), spark: "M2 24 11 23 20 16 29 19 38 10 47 12 56 6 65 3" },
     { label: "存在卡点", value: blocked.length, icon: CirclePause, color: "orange", foot: `分布在 ${new Set(blocked.map(r => r.teamId)).size} 个团队，等待跟进`, action: () => onSelect("blocked") },
     { label: "高优逾期", value: overdue.length, icon: AlarmClock, color: "red", foot: overdue.length ? `最早已逾期 ${Math.max(...overdue.map(r => daysOverdue(r.expectedDate!, data.now)))} 天，请优先关注` : "暂无高优需求逾期", action: () => onSelect("overdue") },
   ];
@@ -36,7 +36,7 @@ export function RequirementFlags({ requirement: r }: { requirement: Requirement 
   const { data } = useWorkspace();
   if (r.status === "released") return <Badge tone="green"><Check size={11} />已上线</Badge>;
   if (r.status === "cancelled") return <Badge tone="neutral">已取消</Badge>;
-  return <span className="flag-list">{isNew(r, data.now) && <Badge tone="blue" dot>新建</Badge>}{r.blocked && <Badge tone="orange" dot>卡点</Badge>}{isOverdue(r, data.now) && <Badge tone="red" dot>逾期</Badge>}</span>;
+  return <span className="flag-list">{isNew(r, data.now, data.newWindowDays) && <Badge tone="blue" dot>新建</Badge>}{r.blocked && <Badge tone="orange" dot>卡点</Badge>}{isOverdue(r, data.now) && <Badge tone="red" dot>逾期</Badge>}</span>;
 }
 export function RequirementTable({ items, showTeam = false }: { items: Requirement[]; showTeam?: boolean }) {
   const { data, openDetail } = useWorkspace();
@@ -65,25 +65,25 @@ export function Dashboard() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [rules, setRules] = useState(false);
   const active = data.requirements.filter(r => r.status === "active");
-  const focused = active.filter(r => isFocused(r, data.now));
+  const focused = active.filter(r => isFocused(r, data.now, data.newWindowDays));
   const blocked = active.filter(r => r.blocked).length;
   const overdue = active.filter(r => isOverdue(r, data.now)).length;
   const tabs: { id: FocusFilter; name: string; count: number; tone: string }[] = [
     { id: "all", name: "全部关注", count: focused.length, tone: "purple" },
-    { id: "new", name: "本周新建", count: active.filter(r => isNew(r, data.now)).length, tone: "blue" },
+    { id: "new", name: "本周新建", count: active.filter(r => isNew(r, data.now, data.newWindowDays)).length, tone: "blue" },
     { id: "blocked", name: "存在卡点", count: blocked, tone: "orange" },
     { id: "overdue", name: "高优逾期", count: overdue, tone: "red" },
   ];
-  const items = focused.filter(r => (focus === "all" || focus === "new" && isNew(r, data.now) || focus === "blocked" && r.blocked || focus === "overdue" && isOverdue(r, data.now)) && (!teamFilter || r.teamId === teamFilter) && (!priority || r.priority === priority) && (!owner || r.owner === owner) && (!query || `${r.title} ${r.owner} ${requirementCode(r.id)}`.toLowerCase().includes(query.toLowerCase())));
+  const items = focused.filter(r => (focus === "all" || focus === "new" && isNew(r, data.now, data.newWindowDays) || focus === "blocked" && r.blocked || focus === "overdue" && isOverdue(r, data.now)) && (!teamFilter || r.teamId === teamFilter) && (!priority || r.priority === priority) && (!owner || r.owner === owner) && (!query || `${r.title} ${r.owner} ${requirementCode(r.id)}`.toLowerCase().includes(query.toLowerCase())));
   const dateLabel = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "long", day: "numeric", weekday: "long" }).format(new Date(data.now));
-  const startDate = todayString(new Date(new Date(data.now).getTime() - 6 * 86400000));
+  const startDate = todayString(new Date(new Date(data.now).getTime() - (data.newWindowDays - 1) * 86400000));
   return <div className="dashboard"><PageHeading title="工作台" subtitle="聚焦关键节点，让每个需求稳步向前。" actions={<><span className="today-label"><CalendarDays size={14} />{dateLabel}</span><button className={`button icon-only refresh-button ${refreshing ? "refreshing" : ""}`} disabled={refreshing} onClick={() => refresh(true).catch(() => notify("同步失败，请稍后重试", "error"))} aria-label="刷新数据"><RefreshCw size={16} /></button><CreateButton /></>} /><Metrics onSelect={setFocus} />
-    <section className="focus-section"><div className="section-heading"><div><h2>需要关注的需求<span className="section-heading-dot" /></h2><span className="section-description">关键进展与风险，一眼看清</span></div><span className="date-range"><CalendarDays size={14} />近 7 天 <span>{shortDate(startDate)} – {shortDate(todayString(data.now))}</span></span></div><div className="focus-toolbar"><div className="focus-tabs">{tabs.map(tab => <button key={tab.id} className={`focus-tab ${focus === tab.id ? "active" : ""}`} onClick={() => setFocus(tab.id)}>{tab.id !== "all" && <i className={tab.tone} />}{tab.name}<span>{tab.count}</span></button>)}</div><div className="focus-filter-actions"><select className="quiet-select" value={teamFilter} onChange={e => setTeamFilter(e.target.value)} aria-label="按团队筛选"><option value="">全部团队</option>{data.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><span className="filter-divider" /><button className={`filter-button ${filtersOpen || priority || owner ? "active" : ""}`} onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={15} />筛选{(priority || owner) && <i />}</button></div></div>
+    <section className="focus-section"><div className="section-heading"><div><h2>需要关注的需求<span className="section-heading-dot" /></h2><span className="section-description">关键进展与风险，一眼看清</span></div><span className="date-range"><CalendarDays size={14} />近 {data.newWindowDays} 天 <span>{shortDate(startDate)} – {shortDate(todayString(data.now))}</span></span></div><div className="focus-toolbar"><div className="focus-tabs">{tabs.map(tab => <button key={tab.id} className={`focus-tab ${focus === tab.id ? "active" : ""}`} onClick={() => setFocus(tab.id)}>{tab.id !== "all" && <i className={tab.tone} />}{tab.name}<span>{tab.count}</span></button>)}</div><div className="focus-filter-actions"><select className="quiet-select" value={teamFilter} onChange={e => setTeamFilter(e.target.value)} aria-label="按团队筛选"><option value="">全部团队</option>{data.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><span className="filter-divider" /><button className={`filter-button ${filtersOpen || priority || owner ? "active" : ""}`} onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={15} />筛选{(priority || owner) && <i />}</button></div></div>
       {filtersOpen && <div className="filter-panel"><span><SlidersHorizontal size={14} />精细筛选</span><select value={priority} onChange={e => setPriority(e.target.value)} aria-label="优先级筛选"><option value="">全部优先级</option>{Object.entries(PRIORITIES).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select><select value={owner} onChange={e => setOwner(e.target.value)} aria-label="负责人筛选"><option value="">全部负责人</option>{[...new Set(active.map(r => r.owner).filter(Boolean))].map(name => <option key={name}>{name}</option>)}</select><button className="text-button" onClick={() => { setPriority(""); setOwner(""); setTeamFilter(""); }}>重置筛选</button><button className="icon-button tiny filter-close" onClick={() => setFiltersOpen(false)} aria-label="收起筛选"><X size={15} /></button></div>}
       <div className="notice-strip"><Sparkles size={15} /><p>{blocked || overdue ? <>有 <strong>{blocked} 项需求</strong>遇到卡点，<strong>{overdue} 项高优需求</strong>已逾期，建议优先跟进。</> : <>所有需求都在有序推进，继续保持。</>}</p><button onClick={() => setRules(true)}>关注规则<CircleHelp size={13} /></button></div>
       <div className="requirement-groups">{data.teams.filter(t => items.some(r => r.teamId === t.id)).map(team => <RequirementGroup key={team.id} team={team} items={items.filter(r => r.teamId === team.id)} />)}{!items.length && <div className="card"><EmptyState title={focus === "blocked" ? "当前没有匹配的卡点需求" : "没有需要关注的需求"} description="一切都在掌握之中。你也可以调整筛选条件，查看其他需求。" action={<button className="button" onClick={() => { setFocus("all"); setPriority(""); setOwner(""); setTeamFilter(""); }}>清除筛选</button>} /></div>}</div><div className="list-footnote"><Check size={13} />已展示全部 {items.length} 项关注需求<span>同一需求命中多条规则时仅展示一次</span></div>
     </section>
-    {rules && <Modal title="我们如何聚合关注需求？" description="少一点信息噪音，多一点有效关注。" onClose={() => setRules(false)}><div className="rules-list"><div><Badge tone="blue">本周新建</Badge><p>创建时间在近 7 天内，且仍在途的需求。</p></div><div><Badge tone="orange">存在卡点</Badge><p>所有标记了卡点的在途需求，不受创建时间限制。</p></div><div><Badge tone="red">高优逾期</Badge><p>优先级为高，已超过期望上线日期，且尚未上线。未填日期的需求不命中。</p></div></div><div className="guide-note"><Info size={17} /><p>取以上三条规则的并集，按团队分组、不分页。已上线或已取消的需求自动移出工作台，可在「归档历史」中查询。</p></div></Modal>}
+    {rules && <Modal title="我们如何聚合关注需求？" description="少一点信息噪音，多一点有效关注。" onClose={() => setRules(false)}><div className="rules-list"><div><Badge tone="blue">本周新建</Badge><p>创建时间在近 {data.newWindowDays} 天内，且仍在途的需求。</p></div><div><Badge tone="orange">存在卡点</Badge><p>所有标记了卡点的在途需求，不受创建时间限制。</p></div><div><Badge tone="red">高优逾期</Badge><p>优先级为高，已超过期望上线日期，且尚未上线。未填日期的需求不命中。</p></div></div><div className="guide-note"><Info size={17} /><p>取以上三条规则的并集，按团队分组、不分页。已上线或已取消的需求自动移出工作台，可在「归档历史」中查询。</p></div></Modal>}
   </div>;
 }
 function sortRequirements(items: Requirement[], sort: string, now: string) {
