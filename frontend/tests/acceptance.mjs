@@ -1,0 +1,176 @@
+import "dotenv/config";
+import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
+import { chromium } from "playwright";
+import { eq, inArray, or, sql } from "drizzle-orm";
+import { db, pool } from "../src/db/index.ts";
+import { teams, members, requirements, sessions, auditLogs } from "../src/db/schema.ts";
+
+const base = process.env.TEST_BASE_URL || "http://localhost:3000";
+const suffix = Date.now().toString(36);
+const testUsername = `qa_${suffix}`;
+let teamId, memberId, browser;
+const errors = [];
+async function request(path, { method = "GET", body, cookie = "", expected = 200 } = {}) {
+  const response = await fetch(base + path, { method, headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(cookie ? { Cookie: cookie } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const data = await response.json();
+  assert.equal(response.status, expected, `${method} ${path}: ${JSON.stringify(data)}`);
+  return { data, response };
+}
+async function post(action, values = {}, expected = 200, cookie = "") {
+  return (await request("/api/workspace", { method: "POST", body: { action, ...values }, expected, cookie })).data;
+}
+const workspace = async (cookie = "") => (await request("/api/workspace", { cookie })).data;
+const check = name => console.log(`PASS ${name}`);
+try {
+  const baseline = await workspace();
+  assert.equal(baseline.teams.length >= 4, true);
+  assert.equal("webhook" in baseline.settings, false);
+  assert.equal("signingSecret" in baseline.settings, false);
+  assert.equal(baseline.members.some(m => "passwordHash" in m), false);
+  check("Workspace and secret redaction");
+  teamId = (await post("createTeam", { name: `__验收临时团队_${suffix}`, description: "自动化验收后清理", color: "teal" })).id;
+  await post("createMember", { name: "验收产品经理", username: testUsername, role: "pm", teamIds: [teamId] });
+  let data = await workspace();
+  memberId = data.members.find(m => m.username === testUsername).id;
+  const initialStages = data.teams.find(t => t.id === teamId).stages;
+  const identify = await request("/api/auth", { method: "POST", body: { action: "identify", username: testUsername } });
+  assert.equal(identify.data.firstLogin, true);
+  const auth = await request("/api/auth", { method: "POST", body: { action: "login", username: testUsername, password: `Horus-${randomBytes(12).toString("hex")}` } });
+  const cookie = auth.response.headers.get("set-cookie").split(";")[0];
+  const pm = await workspace(cookie);
+  assert.equal(pm.actor.role, "pm");
+  assert.deepEqual(pm.actor.teamIds, [teamId]);
+  assert.equal(pm.actor.firstLogin, false);
+  await post("createRequirement", { teamId: baseline.teams[0].id, title: "不得写入的需求", priority: "high" }, 403, cookie);
+  await post("createTeam", { name: "不得创建的团队" }, 403, cookie);
+  check("First-login password hashing and PM team permissions");
+
+  const id = (await post("createRequirement", { teamId, title: "__验收：阶段与卡点规则", priority: "high", owner: "自由文本负责人" }, 200, cookie)).id;
+  data = await workspace();
+  let r = data.requirements.find(r => r.id === id);
+  assert.equal(r.expectedDate, null);
+  assert.equal(r.source, "手工录入");
+  assert.equal(r.owner, "自由文本负责人");
+  assert.equal(r.stageId, initialStages[0].id);
+  await post("block", { id, blocked: true, blockReason: "" }, 400, cookie);
+  await post("block", { id, blocked: true, blockReason: "验收依赖等待" }, 200, cookie);
+  await post("advance", { id, stageId: "integration" }, 200, cookie);
+  await post("advance", { id, stageId: "design" }, 400, cookie);
+  r = (await workspace()).requirements.find(r => r.id === id);
+  assert.equal(r.stageId, "integration");
+  assert.equal(r.blocked, true);
+  check("Required blocker reason, forward skipping and rollback rejection");
+
+  const nextStages = initialStages.filter(s => s.id !== "integration");
+  await post("updateTemplate", { teamId, stages: nextStages, migrations: {} }, 400);
+  assert.equal((await workspace()).teams.find(t => t.id === teamId).stages.length, 8);
+  await post("updateTemplate", { teamId, stages: nextStages, migrations: { integration: "qa" } });
+  r = (await workspace()).requirements.find(r => r.id === id);
+  assert.equal(r.stageId, "qa");
+  await post("advance", { id, stageId: "released" }, 200, cookie);
+  r = (await workspace()).requirements.find(r => r.id === id);
+  assert.equal(r.status, "released");
+  assert.equal(r.blocked, false);
+  assert.ok(r.archivedAt);
+  await post("advance", { id, stageId: "released" }, 400, cookie);
+  const cancelId = (await post("createRequirement", { teamId, title: "__验收：取消归档", priority: "low" }, 200, cookie)).id;
+  await post("cancel", { id: cancelId }, 200, cookie);
+  assert.equal((await workspace()).requirements.find(r => r.id === cancelId).status, "cancelled");
+  check("Safe template migration, release archival and cancellation");
+
+  await post("saveNotifications", { webhook: "https://example.com/robot/send?access_token=test", time: "09:30", enabled: false, appUrl: base }, 400);
+  await post("saveNotifications", { time: "25:00", enabled: false, appUrl: base }, 400);
+  if (!baseline.settings.hasWebhook) await post("sendNotification", {}, 400);
+  await post("toggleMember", { id: memberId });
+  await request("/api/workspace", { cookie, expected: 401 });
+  check("Notification validation and disabled-session rejection");
+
+  browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto(`${base}/teams/${teamId}`, { waitUntil: "networkidle" });
+  assert.equal(await page.getByRole("heading", { level: 1 }).textContent(), `__验收临时团队_${suffix}`);
+  await page.getByRole("button", { name: "新建需求", exact: true }).click();
+  const uiTitle = `__验收：浏览器新建_${suffix}`;
+  await page.locator("#new-title").fill(uiTitle);
+  await page.locator("#new-description").fill("验证真实浏览器表单与数据库持久化");
+  await page.locator("#new-owner").fill("浏览器验收");
+  await page.getByRole("button", { name: "创建需求", exact: true }).click();
+  await page.getByRole("dialog", { name: uiTitle }).waitFor();
+  await page.getByRole("button", { name: "编辑信息", exact: true }).click();
+  await page.locator("#edit-description").fill("浏览器编辑保存成功");
+  await page.getByRole("button", { name: "保存修改", exact: true }).click();
+  await page.getByText("浏览器编辑保存成功", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "标记卡点", exact: true }).click();
+  await page.getByRole("textbox", { name: "卡点原因", exact: true }).fill("浏览器验收卡点原因");
+  await page.getByRole("button", { name: "保存卡点", exact: true }).click();
+  await page.locator(".block-alert p").waitFor();
+  assert.equal(await page.locator(".block-alert p").textContent(), "浏览器验收卡点原因");
+  await page.getByRole("button", { name: "解除卡点", exact: true }).click();
+  await page.locator(".block-alert").waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "推进阶段", exact: true }).click();
+  await page.getByRole("combobox", { name: "目标阶段", exact: true }).selectOption("released");
+  await page.getByRole("button", { name: "确认推进", exact: true }).click();
+  await page.getByText("已顺利交付，自动归档", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  const saved = (await workspace()).requirements.find(r => r.title === uiTitle);
+  assert.equal(saved.status, "released");
+  assert.equal(saved.description, "浏览器编辑保存成功");
+  check("Browser create, edit, block, unblock and release workflows");
+
+  await page.goto(base, { waitUntil: "networkidle" });
+  await page.locator(".focus-tab").filter({ hasText: "存在卡点" }).click();
+  assert.equal(await page.locator(".requirement-table tbody tr").count(), baseline.requirements.filter(r => r.status === "active" && r.blocked).length);
+  await page.locator(".focus-tab").filter({ hasText: "全部关注" }).click();
+  const group = page.locator(".group-toggle").first();
+  await group.click();
+  assert.equal(await group.getAttribute("aria-expanded"), "false");
+  await group.click();
+  assert.equal(await group.getAttribute("aria-expanded"), "true");
+  await page.getByRole("textbox", { name: "搜索需求、负责人", exact: true }).fill("SSO");
+  await page.locator(".search-results button").first().waitFor();
+  await page.locator(".search-results button").first().click();
+  await page.getByRole("dialog").waitFor();
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("textbox", { name: "搜索需求、负责人", exact: true }).fill("");
+  for (const path of ["/requirements", "/archive", "/settings/stages", "/settings/members", "/settings/notifications", "/login"]) {
+    const response = await page.goto(base + path, { waitUntil: "networkidle" });
+    assert.equal(response.status(), 200, path);
+  }
+  check("Dashboard filtering, collapse, search and every application route");
+
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  mobile.on("pageerror", e => errors.push(e.message));
+  await mobile.goto(base, { waitUntil: "networkidle" });
+  assert.equal(await mobile.evaluate(() => document.body.scrollWidth), 390);
+  assert.equal(await mobile.getByRole("button", { name: "新建需求", exact: true }).isVisible(), false);
+  await mobile.locator(".mobile-requirement").first().click();
+  await mobile.getByRole("dialog").waitFor();
+  assert.equal(await mobile.getByRole("button", { name: "推进阶段", exact: true }).isVisible(), false);
+  assert.equal(await mobile.locator(".mobile-readonly-note").isVisible(), true);
+  await mobile.getByRole("button", { name: "关闭", exact: true }).click();
+  await mobile.getByRole("button", { name: "打开导航", exact: true }).click();
+  assert.equal(await mobile.locator(".sidebar").getAttribute("class"), "sidebar mobile-open");
+  assert.deepEqual(errors, []);
+  check("Mobile read-only layout and zero browser runtime errors");
+  const audit = await db.select().from(auditLogs).where(eq(auditLogs.requirementId, id));
+  assert.ok(audit.length >= 4);
+  check("Database persistence and operator audit records");
+  console.log("ALL ACCEPTANCE TESTS PASSED");
+} finally {
+  if (browser) await browser.close();
+  if (teamId) {
+    await db.transaction(async tx => {
+      const fixtureRows = await tx.select({ id: requirements.id }).from(requirements).where(eq(requirements.teamId, teamId));
+      const fixtureIds = fixtureRows.map(r => r.id);
+      await tx.delete(auditLogs).where(or(inArray(auditLogs.requirementId, fixtureIds.length ? fixtureIds : [-1]), eq(auditLogs.actorId, memberId || "__no_member__"), sql`${auditLogs.detail}->>'teamId' = ${teamId}`, sql`${auditLogs.detail}->>'memberId' = ${memberId || "__no_member__"}`));
+      if (memberId) await tx.delete(sessions).where(eq(sessions.memberId, memberId));
+      await tx.delete(requirements).where(eq(requirements.teamId, teamId));
+      if (memberId) await tx.delete(members).where(eq(members.id, memberId));
+      await tx.delete(teams).where(eq(teams.id, teamId));
+    });
+    console.log("Temporary test fixtures removed");
+  }
+  await pool.end();
+}
