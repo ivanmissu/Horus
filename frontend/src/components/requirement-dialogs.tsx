@@ -17,7 +17,7 @@ export function CreateRequirement({ teamId, onClose }: { teamId: string; onClose
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     try {
-      const result = await mutate("createRequirement", form, "需求已创建，已纳入工作台关注范围");
+      const result = await mutate("createRequirement", form, "需求已创建，已纳入工作台在途列表");
       onClose();
       if (result.id) openDetail(Number(result.id));
     } catch { /* Keep the form available for correction. */ }
@@ -63,7 +63,7 @@ export function RequirementDetail({ id, onClose }: { id: number; onClose: () => 
       {cancelling && editable && <div className="inline-action-box cancel-confirm desktop-edit"><h3><Ban size={16} />确认不再推进此需求？</h3><p>取消后将归档，离开所有在途视图。需求记录仍会保留供查阅，此操作不可撤销。</p><div className="inline-actions"><button className="button small" onClick={() => setCancelling(false)}>继续推进</button><button className="button danger small" disabled={busy} onClick={cancel}>{busy && <Spinner />}确认取消需求</button></div></div>}
       {archiving && archivable && <div className="inline-action-box cancel-confirm desktop-edit"><h3><Archive size={16} />确认归档此需求？</h3><p>归档后将离开所有在途视图，记录只读保留供查阅，且不可撤销。</p><div className="inline-actions"><button className="button small" onClick={() => setArchiving(false)}>暂不归档</button><button className="button primary small" disabled={busy} onClick={archive}>{busy && <Spinner />}确认归档</button></div></div>}
       <section className="detail-section description-section"><div className="detail-section-heading"><h3>需求描述</h3></div><p>{r.description || "还没有补充描述。清晰的背景与目标，有助于团队理解需求。"}</p></section>
-      {r.archivedAt && <div className="archive-detail-note"><ShieldCheck size={16} /><div><strong>{r.status === "released" ? "已顺利交付，已归档" : "已取消，保留记录"}</strong><p>归档于 {r.archivedAt.slice(0, 10).replaceAll("-", ".")}，不再进入首页关注规则。</p></div></div>}
+      {r.archivedAt && <div className="archive-detail-note"><ShieldCheck size={16} /><div><strong>{r.status === "released" ? "已顺利交付，已归档" : "已取消，保留记录"}</strong><p>归档于 {r.archivedAt.slice(0, 10).replaceAll("-", ".")}，不再出现在工作台与在途列表。</p></div></div>}
       {r.status === "released" && !r.archivedAt && <div className="archive-detail-note"><Rocket size={16} /><div><strong>已顺利交付，等待归档</strong><p>需求已上线，仍保留在在途列表中；确认归档后将离开在途视图。</p></div></div>}
       <div className="detail-update">最近更新于 {new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(r.updatedAt))}<span>操作人：{data.members.find(m => m.id === r.updatedBy)?.name || "系统"}</span></div><div className="mobile-readonly-note"><ShieldCheck size={13} />当前为手机只读模式，请在电脑端维护需求。</div>
     </>}

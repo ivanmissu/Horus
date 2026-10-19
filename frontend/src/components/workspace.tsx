@@ -8,7 +8,7 @@ import { Avatar, Badge, EmptyState, HorusLogo, Modal, TeamIcon } from "./ui";
 import { Dashboard, RequirementsPage, TeamPage } from "./requirement-views";
 import { CreateRequirement, RequirementDetail } from "./requirement-dialogs";
 import { MembersPage, NotificationsPage, StagesPage } from "./management";
-import { isOverdue, requirementCode } from "@/lib/domain";
+import { isInFlight, isOverdue, requirementCode } from "@/lib/domain";
 import type { WorkspaceData } from "@/lib/types";
 import { embeddedAuthHeaders, EMBEDDED_SESSION_KEY } from "@/lib/embedded-session";
 
@@ -28,6 +28,7 @@ function WorkspaceShell() {
   const team = path.startsWith("/teams/") ? data.teams.find(t => t.id === path.split("/")[2]) : undefined;
   const title = path === "/" ? "工作台" : path === "/requirements" ? "所有需求" : path === "/archive" ? "归档历史" : team?.name || (path.endsWith("stages") ? "阶段模板" : path.endsWith("members") ? "成员与团队" : "通知设置");
   const active = data.requirements.filter(r => r.status === "active");
+  const inFlight = data.requirements.filter(isInFlight);
   const alerts = active.filter(r => r.blocked || isOverdue(r, data.now));
   const searchResults = query.trim() ? data.requirements.filter(r => `${r.title} ${r.owner} ${requirementCode(r.id)}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 7) : [];
   useEffect(() => {
@@ -51,7 +52,7 @@ function WorkspaceShell() {
       <div className="workspace-switch"><span className="workspace-avatar">H</span><span className="nav-text"><strong>研发协作空间</strong><small>团队负责人工作空间</small></span><ShieldCheck size={15} className="workspace-shield" /></div>
       <nav className="main-nav" aria-label="主导航">{navItems.map(item => <Link key={item.href} href={item.href} className={`nav-item ${path === item.href ? "active" : ""}`} onClick={navigate} title={item.label}><item.icon size={18} strokeWidth={1.8} /><span className="nav-text">{item.label}</span>{item.href === "/" && <span className="nav-active-dot" />}</Link>)}</nav>
       <div className="nav-section-heading"><span>我的团队</span>{data.actor.role === "owner" && <Link href="/settings/members?newTeam=1" onClick={navigate} className="icon-button tiny desktop-edit" aria-label="创建团队"><Plus size={15} /></Link>}</div>
-      <nav className="team-nav" aria-label="团队">{data.teams.map(item => <Link href={`/teams/${item.id}`} key={item.id} onClick={navigate} className={`nav-item team-nav-item ${team?.id === item.id ? "active" : ""}`} title={item.name}><TeamIcon team={item} small /><span className="nav-text">{item.name}</span><span className="nav-count">{active.filter(r => r.teamId === item.id).length}</span></Link>)}</nav>
+      <nav className="team-nav" aria-label="团队">{data.teams.map(item => <Link href={`/teams/${item.id}`} key={item.id} onClick={navigate} className={`nav-item team-nav-item ${team?.id === item.id ? "active" : ""}`} title={item.name}><TeamIcon team={item} small /><span className="nav-text">{item.name}</span><span className="nav-count">{inFlight.filter(r => r.teamId === item.id).length}</span></Link>)}</nav>
       {data.actor.role === "owner" && <><div className="nav-section-heading desktop-edit"><span>空间管理</span></div><nav className="management-nav desktop-edit" aria-label="空间管理">{management.map(item => <Link key={item.href} href={item.href} onClick={navigate} className={`nav-item ${path === item.href ? "active" : ""}`} title={item.label}><item.icon size={18} strokeWidth={1.7} /><span className="nav-text">{item.label}</span></Link>)}</nav></>}
       <div className="sidebar-bottom"><div className="sidebar-note"><div className="note-orbit"><span /><span /><span /><i /></div><Sparkles size={19} /><strong>少一点追问，多一点掌控。</strong><p>让团队的每一步，都清晰可见。</p><button onClick={() => setHelp(true)}>了解 Horus <ArrowUpRight size={13} /></button></div><div className="sidebar-footer"><span>Horus <small>V1.0</small></span><span className="system-status"><i />{data.preview ? "只读示例数据" : "系统运行正常"}</span></div></div>
     </aside>
@@ -68,7 +69,7 @@ function WorkspaceShell() {
     </div>
     {createFor !== null && <CreateRequirement teamId={createFor} onClose={closeCreate} />}
     {detailId !== null && <RequirementDetail key={detailId} id={detailId} onClose={() => openDetail(null)} />}
-    {help && <Modal title="你好，欢迎来到 Horus" description="不追问每个细节，也能掌握每一步进展。" onClose={() => setHelp(false)}><div className="guide-intro"><HorusLogo compact /><p>Horus 把研发流程中的关键节点变成里程碑。每天花一分钟，让团队的进展与风险一目了然。</p></div><div className="guide-rule"><span className="rule-number blue">01</span><div><h3>本周新建</h3><p>展示近 {data.newWindowDays} 天内新建的在途需求，看看它们走到了哪一步。</p></div></div><div className="guide-rule"><span className="rule-number orange">02</span><div><h3>存在卡点</h3><p>不论创建时间，所有卡点需求都会出现在工作台，附带原因。</p></div></div><div className="guide-rule"><span className="rule-number red">03</span><div><h3>高优逾期</h3><p>高优先级且超过期望上线日期的需求，优先进入你的视线。</p></div></div><div className="guide-note"><Info size={16} /><p>三条规则取并集，按团队分组。阶段可向前跳过、不可回退；到达最后一个阶段标记上线，需在需求详情中手动归档。手机端提供只读浏览，数据维护请使用桌面端。</p></div>{data.demo && <div className="demo-note">{data.preview ? "当前为只读预览，示例数据不会保存。连接 MySQL 后可使用完整功能。" : "当前为可交互演示空间，操作会保存到数据库。正式部署可开启强制账号登录。"}</div>}</Modal>}
+    {help && <Modal title="你好，欢迎来到 Horus" description="不追问每个细节，也能掌握每一步进展。" onClose={() => setHelp(false)}><div className="guide-intro"><HorusLogo compact /><p>Horus 把研发流程中的关键节点变成里程碑。每天花一分钟，让团队的进展与风险一目了然。</p></div><div className="guide-rule"><span className="rule-number blue">01</span><div><h3>本周新建</h3><p>近 {data.newWindowDays} 天内创建、仍在推进中的需求会以蓝色标记高亮，也可点击标签单独查看。</p></div></div><div className="guide-rule"><span className="rule-number orange">02</span><div><h3>存在卡点</h3><p>不论创建时间，所有卡点需求都会高亮提示，并展示卡点原因。</p></div></div><div className="guide-rule"><span className="rule-number red">03</span><div><h3>高优逾期</h3><p>高优先级且超过期望上线日期的需求，优先进入你的视线。</p></div></div><div className="guide-note"><Info size={16} /><p>工作台默认列出全部未归档需求并按团队分组；本周新建、卡点、高优逾期以标记高亮，可一键筛选。阶段可向前跳过、不可回退；到达最后一个阶段标记上线，需在需求详情中手动归档。手机端提供只读浏览，数据维护请使用桌面端。</p></div>{data.demo && <div className="demo-note">{data.preview ? "当前为只读预览，示例数据不会保存。连接 MySQL 后可使用完整功能。" : "当前为可交互演示空间，操作会保存到数据库。正式部署可开启强制账号登录。"}</div>}</Modal>}
     {toast && <div key={toast.id} role="status" className={`toast ${toast.type}`}>{toast.type === "success" ? <CheckCircle2 size={19} /> : toast.type === "error" ? <AlertCircle size={19} /> : <Info size={19} />}<span>{toast.message}</span></div>}
   </div>;
 }
