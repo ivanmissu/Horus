@@ -31,6 +31,17 @@ export function parseNewWindowDays(value: unknown) {
 export function newWindowDays() {
   return parseNewWindowDays(process.env.HORUS_NEW_WINDOW_DAYS) ?? parseNewWindowDays(process.env.NEXT_PUBLIC_NEW_WINDOW_DAYS) ?? DEFAULT_NEW_WINDOW_DAYS;
 }
+/** A requirement leaves every in-flight view only once it has been archived. */
+export function isArchived(r: Pick<Requirement, "archivedAt">) {
+  return !!r.archivedAt;
+}
+export function isInFlight(r: Pick<Requirement, "archivedAt">) {
+  return !r.archivedAt;
+}
+/** Released requirements stay in the in-flight lists until an owner archives them manually. */
+export function canArchive(r: Pick<Requirement, "status" | "archivedAt">) {
+  return r.status === "released" && !r.archivedAt;
+}
 export function isNew(r: Requirement, now: string | Date = new Date(), windowDays = newWindowDays()) {
   const days = parseNewWindowDays(windowDays) ?? DEFAULT_NEW_WINDOW_DAYS;
   return r.status === "active" && new Date(now).getTime() - new Date(r.createdAt).getTime() < days * 86400000;
