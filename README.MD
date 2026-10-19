@@ -79,7 +79,169 @@ npm run build         # 生产构建
 
 ## 生产环境部署（Kubernetes）
 
-参见 [K8s 部署说明](docs/kubernetes-deployment.md) 与 [`deploy/k8s/horus.yaml`](deploy/k8s/horus.yaml)：单副本、外部 MySQL、Secret 只读挂载 `.env`，以及不访问数据库的 `/api/health` 探针。心跳仅表示进程存活，不代表数据库健康。
+本节按「已有 Kubernetes 集群 + 外部 MySQL 8.0」说明从构建镜像到首次访问的完整流程。示例清单为 [`deploy/k8s/horus.yaml`](deploy/k8s/horus.yaml)：只创建 Horus Deployment 和集群内的 ClusterIP Service，**不会**创建 MySQL、Ingress/TLS 或数据库备份。
+
+### 部署前准备
+
+- 可用的 Kubernetes 集群及 `kubectl`，当前 context 有权限创建 namespace、Secret、Deployment 和 Service。
+- 可供集群节点拉取的容器镜像仓库（私有仓库需额外配置拉取凭证）。
+- 集群 Pod 网络可以访问 MySQL 8.0 的地址和端口（通常为 TCP 3306）。
+- **应用必须保持 1 个副本**：清单使用 `Recreate` 更新策略；不要扩容或配置 HPA。定时摘要调度和启动时的数据库结构同步都假设单实例，升级时会有短暂服务中断。
+
+先确认命令操作的是目标集群：
+
+```bash
+kubectl config current-context
+kubectl get nodes
+```
+
+### 1. 准备外部 MySQL
+
+由 DBA 提前创建 Horus 专用数据库和账号，使用 `utf8mb4`，并授予该库所需的建表、改表及业务读写权限。MySQL 防火墙/白名单需允许集群 Pod 的实际出口地址访问；不要把数据库端口公开到互联网。以下 SQL 仅为示例，来源地址和密码应按所在环境替换，并遵循 DBA 的账号策略：
+
+```sql
+CREATE DATABASE horus CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'horus'@'<允许访问的来源>' IDENTIFIED BY '<强密码>';
+GRANT ALL PRIVILEGES ON horus.* TO 'horus'@'<允许访问的来源>';
+```
+
+Horus 容器启动时会等待 MySQL 可用（最多 90 秒），随后自动同步 7 张业务表并幂等创建初始负责人和通知设置；常规部署不需要手工执行 `deploy/mysql/` 下的 SQL。`DATABASE_URL` 中的主机名必须是 **Pod 可达的 MySQL 地址**，不能填写 `localhost` 或 `127.0.0.1`。如果用户名或密码包含 URL 特殊字符，先做百分号编码（例如 `@` 写成 `%40`）。
+
+### 2. 构建并推送 Horus 镜像
+
+在仓库根目录执行。把示例仓库地址、组织名和 tag 替换成实际值；每个版本使用不同的 tag，避免复用 `latest`：
+
+```bash
+export REGISTRY=registry.example.com
+export IMAGE="$REGISTRY/your-team/horus:20261019-1"
+
+docker login "$REGISTRY"
+docker build \
+  --build-arg NEXT_PUBLIC_NEW_WINDOW_DAYS=7 \
+  -t "$IMAGE" \
+  ./frontend
+docker push "$IMAGE"
+```
+
+构建上下文是 `./frontend`。Kubernetes 节点必须能够拉取推送后的镜像；若本机与集群节点 CPU 架构不同，可用 Buildx 指定节点架构（以下以 amd64 为例），以此命令替代上面的 `docker build` 和 `docker push`：
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_NEW_WINDOW_DAYS=7 \
+  -t "$IMAGE" --push ./frontend
+```
+
+私有仓库还需在 `horus` namespace 配置 image pull Secret，并在清单的 Pod spec 中添加 `imagePullSecrets`。
+
+`NEXT_PUBLIC_NEW_WINDOW_DAYS` 是写入前端 bundle 的**构建期**值。调整它时需重新构建镜像；请与 `.env` 中的 `HORUS_NEW_WINDOW_DAYS` 保持一致（默认均为 `7`，允许范围 `1–90`）。
+
+### 3. 准备运行时 `.env` 并创建 Kubernetes Secret
+
+在安全位置建立配置文件，权限只授予部署人员：
+
+```bash
+umask 077
+mkdir -p /secure/horus
+vi /secure/horus/.env
+chmod 600 /secure/horus/.env
+```
+
+文件内容示例（将数据库主机、密码和正式访问域名替换为实际值）：
+
+```dotenv
+DATABASE_URL=mysql://horus:URL_ENCODED_PASSWORD@mysql.example.internal:3306/horus
+HORUS_DEMO_MODE=false
+HORUS_INIT_OWNER_USERNAME=admin
+HORUS_INIT_OWNER_NAME="团队负责人"
+APP_URL=https://horus.example.com
+HORUS_NEW_WINDOW_DAYS=7
+HORUS_DB_CONNECTION_LIMIT=10
+```
+
+`APP_URL` 应是用户实际访问的正式地址，用于钉钉摘要链接。生产环境必须保持 `HORUS_DEMO_MODE=false`；不要配置 `HORUS_PREVIEW_MODE=true`。这里不需要 Compose 专用的 `MYSQL_*`、`HORUS_PORT`，也不要把 `NEXT_PUBLIC_NEW_WINDOW_DAYS` 当作运行时配置。不要将真实 `.env` 或 Secret 内容提交到 Git。
+
+创建 namespace 和 Secret（Secret 的键名必须是 `.env`）：
+
+```bash
+kubectl create namespace horus --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n horus create secret generic horus-env \
+  --from-file=.env=/secure/horus/.env \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### 4. 配置清单并部署
+
+编辑 [`deploy/k8s/horus.yaml`](deploy/k8s/horus.yaml)，把容器的 `image: horus:local` 改成第 2 步推送的完整镜像地址，例如：
+
+```yaml
+image: registry.example.com/your-team/horus:20261019-1
+```
+
+然后应用清单并等待 rollout 完成：
+
+```bash
+kubectl -n horus apply -f deploy/k8s/horus.yaml
+kubectl -n horus rollout status deployment/horus --timeout=360s
+kubectl -n horus get deployment,pod,service -o wide
+kubectl -n horus logs deployment/horus --tail=200
+```
+
+清单中的配置挂载关系如下，部署前请保持 Secret 名称、键名和挂载路径一致：
+
+- `horus-env` Secret 的 `.env` 键挂载为 `/etc/horus/.env`，卷只读，权限为 `0440`。
+- Pod 设置 `HORUS_ENV_FILE=/etc/horus/.env`。容器入口用 dotenv 读取文件，然后依次等待 MySQL、同步表结构、初始化负责人，最后启动 Next.js。
+- 应用以非 root 用户运行；清单通过 `fsGroup` 使进程可以读取 Secret。显式写在 Pod 环境变量中的值优先于 `.env` 文件。
+- 业务数据存放在外部 MySQL，不存于 Pod；Secret 挂载也不是数据持久化卷。
+
+Secret 默认只是 Base64 编码，并不等于加密。生产集群应启用 Secret 静态加密并限制 namespace/RBAC 读取权限；不要把包含真实密码的 YAML 文件保存到仓库。
+
+### 5. 验证、首次登录和对外访问
+
+查看启动日志中是否出现 MySQL 就绪、7 张表同步完成和应用启动信息。也可以临时端口转发验证：
+
+```bash
+# 此命令保持运行；另开一个终端执行 curl
+kubectl -n horus port-forward service/horus 3000:3000
+```
+
+```bash
+curl -fsS http://127.0.0.1:3000/api/health   # 预期：{"ok":true}
+```
+
+`/api/health` 是不访问数据库的进程心跳。startup、liveness、readiness 探针都使用它；HTTP 200 **不代表 MySQL 或业务功能正常**，还应使用浏览器打开正式地址并实际登录、检查业务页面。首次登录使用初始负责人账号（默认 `admin`），首次登录时设置 8–72 位密码。
+
+清单里的 Service 默认是集群内可访问的 ClusterIP，不会自动提供公网入口。需要外部访问时，由现有 Ingress、网关或反向代理转发到 `horus:3000` 并配置 HTTPS；确保转发 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto`，且 `.env` 的 `APP_URL` 与正式域名一致。
+
+### 6. 更新配置、升级和日常检查
+
+修改服务端配置时，先编辑安全位置的 `.env`，再更新 Secret 并重启 Deployment。进程只在启动时读取配置，不支持热更新：
+
+```bash
+kubectl -n horus create secret generic horus-env \
+  --from-file=.env=/secure/horus/.env \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n horus rollout restart deployment/horus
+kubectl -n horus rollout status deployment/horus --timeout=360s
+```
+
+更新镜像时，按第 2 步构建并推送一个新 tag，把清单中的 `image` 改成新地址，再执行 `kubectl apply` 和 `rollout status`；镜像变化会触发替换 Pod，不需要再单独 `rollout restart`。升级前先备份外部 MySQL，尤其是包含表结构变更的版本；应用启动会再次同步表结构。**不要扩容** Horus，也不要把数据库备份留在 Pod 临时文件系统中。
+
+常用排查命令：
+
+```bash
+kubectl -n horus get pods -o wide
+kubectl -n horus describe pod <horus-pod-name>
+kubectl -n horus logs deployment/horus --tail=200
+kubectl -n horus get events --sort-by=.metadata.creationTimestamp
+```
+
+- `ImagePullBackOff`：核对镜像 tag、仓库权限和 `imagePullSecrets`，并确认镜像架构与节点一致。
+- `CrashLoopBackOff` 或卡在启动：检查日志、Secret 名称/`.env` 键名/数据库 URL，以及 Pod 到 MySQL 的 DNS、网络、防火墙和账号权限；应用等待 MySQL 的时间上限为 90 秒。
+- Secret 已更新但配置没变：确认 Secret 已应用，并执行 `rollout restart`；单纯更新挂载文件不会让运行中的进程重新读取配置。
+- 探针通过但业务访问失败：探针只测 HTTP 进程，继续查看应用日志并核验数据库连接，不能只以 `/api/health` 判断服务可用。
+
+更多配置优先级、探针与更新细节见 [Kubernetes 部署说明](docs/kubernetes-deployment.md)；数据库升级与回滚注意事项见[生产部署手册](docs/deployment-guide.md)。
 
 ## 生产环境部署（Docker Compose · 内网单机）
 
