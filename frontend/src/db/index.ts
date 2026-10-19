@@ -28,7 +28,7 @@ function createPostgresConnectionPool(connectionString: string) {
   const sslMode = parsedUrl.searchParams.get("sslmode")?.toLowerCase();
   const connectionLimit = Number(process.env.HORUS_DB_CONNECTION_LIMIT || (process.env.VERCEL ? 3 : 10));
   return new PostgresPool({
-    connectionString,
+    connectionString: normalizePostgresConnectionString(connectionString),
     max: Number.isInteger(connectionLimit) && connectionLimit > 0 ? connectionLimit : 3,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { parse } from "pg-connection-string";
 import { getDatabaseDialect, normalizePostgresConnectionString } from "../src/db/dialect.ts";
 
@@ -9,6 +10,8 @@ const normalizedPoolerUrl = new URL(normalizePostgresConnectionString("postgresq
 assert.equal(normalizedPoolerUrl.searchParams.get("sslmode"), "no-verify");
 assert.equal(normalizedPoolerUrl.hostname, "localhost");
 assert.equal(parse(normalizedPoolerUrl.toString()).ssl.rejectUnauthorized, false);
+const dbIndexSource = readFileSync(new URL("../src/db/index.ts", import.meta.url), "utf8");
+assert.match(dbIndexSource, /connectionString:\s*normalizePostgresConnectionString\(connectionString\)/);
 assert.equal(normalizePostgresConnectionString("postgresql://user:secret@localhost:5432/horus?sslmode=verify-full"), "postgresql://user:secret@localhost:5432/horus?sslmode=verify-full");
 assert.throws(() => getDatabaseDialect("sqlite://localhost/horus"), /DATABASE_URL must use/);
 console.log("DATABASE_URL MySQL/PostgreSQL provider selection checks passed");
