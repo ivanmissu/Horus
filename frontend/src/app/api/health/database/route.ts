@@ -1,10 +1,26 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
+import { normalizePostgresConnectionString } from "@/db/dialect";
 import { members, sessions } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
 const noStore = { "Cache-Control": "no-store" };
+
+function sslModeInfo() {
+  try {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) return { sslMode: "unset", normalizedSslMode: "unset" };
+    const rawUrl = new URL(connectionString);
+    const normalizedUrl = new URL(normalizePostgresConnectionString(connectionString));
+    return {
+      sslMode: rawUrl.searchParams.get("sslmode")?.toLowerCase() || "unset",
+      normalizedSslMode: normalizedUrl.searchParams.get("sslmode")?.toLowerCase() || "unset",
+    };
+  } catch {
+    return { sslMode: "invalid-url", normalizedSslMode: "invalid-url" };
+  }
+}
 
 function safeErrorCode(error: unknown): string {
   if (!error || typeof error !== "object") return "UNKNOWN";
@@ -29,6 +45,6 @@ export async function GET() {
   } catch (error) {
     const code = safeErrorCode(error);
     console.error("Horus database readiness check failed", { code });
-    return Response.json({ ok: false, code }, { status: 503, headers: noStore });
+    return Response.json({ ok: false, code, ...sslModeInfo() }, { status: 503, headers: noStore });
   }
 }
