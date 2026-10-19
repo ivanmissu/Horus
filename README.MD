@@ -455,6 +455,8 @@ docker rm -f horus-app
 - 需求文档：[`docs/specs/horus-design.md`](docs/specs/horus-design.md)
 - 项目计划：[`docs/specs/horus-project-plan.md`](docs/specs/horus-project-plan.md)
 - 生产部署手册：[`docs/deployment-guide.md`](docs/deployment-guide.md)
+- Kubernetes 部署（挂载 .env 文件版）：[`docs/kubernetes-deployment.md`](docs/kubernetes-deployment.md)
+- Kubernetes 部署（纯环境变量版）：[`docs/kubernetes-env-deployment.md`](docs/kubernetes-env-deployment.md)
 - M5 上线签收清单：[`docs/m5-uat-checklist.md`](docs/m5-uat-checklist.md)
 - 前端说明：[`frontend/README.md`](frontend/README.md)
 
