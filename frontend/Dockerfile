@@ -19,7 +19,7 @@ RUN npm run build
 FROM docker.1ms.run/library/node:22-bookworm-slim AS migrator
 WORKDIR /opt/horus-migrate
 RUN npm init -y \
-  && npm install --no-fund --no-audit dotenv@17.3.1 drizzle-orm@0.45.2 mysql2@3.24.6 drizzle-kit@0.31.10
+  && npm install --no-fund --no-audit dotenv@17.3.1 drizzle-orm@0.45.2 mysql2@3.24.6 pg@8.23.1 drizzle-kit@0.31.10
 COPY drizzle.config.ts ./drizzle.config.ts
 COPY src/db ./src/db
 

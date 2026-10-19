@@ -1,6 +1,6 @@
 # Horus · 研发进程，尽在掌握
 
-Horus 是面向小型研发团队的里程碑跟踪工具，基于 Next.js App Router、React、Drizzle ORM 与 MySQL 8.0。界面和现有领域逻辑沿用原型实现；数据库层已切换至 MySQL，演示访问默认关闭。
+Horus 是面向小型研发团队的里程碑跟踪工具，基于 Next.js App Router、React 与 Drizzle ORM，支持 MySQL 8.0+ 和 PostgreSQL 15+（含 Supabase）。运行时根据 `DATABASE_URL` 自动选择数据库驱动和对应 schema；演示访问默认关闭。
 
 ## 功能
 
@@ -14,27 +14,28 @@ Horus 是面向小型研发团队的里程碑跟踪工具，基于 Next.js App R
 
 ## 本地启动
 
-要求 Node.js 22+ 与 MySQL 8.0+。先创建数据库，再配置连接地址：
+要求 Node.js 22+ 与 MySQL 8.0+ 或 PostgreSQL 15+。先创建数据库，再配置连接地址（驱动由 URL 自动选择）：
 
 ```bash
 cd frontend
 npm install
 export DATABASE_URL='mysql://horus:change-me@127.0.0.1:3306/horus'
+# PostgreSQL / Supabase 可替换为：postgresql://user:password@host:5432/database?sslmode=require
 npm run db:push
 npm run db:init
 npm run dev
 ```
 
-`DATABASE_URL` 是 MySQL URL。Drizzle 配置会从环境变量或 `.env` 读取同一个地址。`db:init` 幂等地创建初始负责人（默认账号 `admin`）与通知设置行；不会为已有负责人重置密码。首次登录时设置密码。
+`DATABASE_URL` 支持 `mysql://`、`postgres://` 和 `postgresql://`。Drizzle 配置会据此自动选择 MySQL 或 PostgreSQL schema/驱动。`db:init` 幂等地创建初始负责人（默认账号 `admin`）与通知设置行；不会为已有负责人重置密码。首次登录时设置密码。
 
 可选环境变量：
 
 - `HORUS_INIT_OWNER_USERNAME`：首次创建负责人时使用的账号，默认 `admin`。
 - `HORUS_INIT_OWNER_NAME`：首次创建负责人时使用的姓名，默认 `团队负责人`。
 - `HORUS_DEMO_MODE=true`：仅用于本地/受控演示。显式启用后自动灌入演示团队和需求，并允许免登录负责人体验；默认未开启，匿名访问工作台会跳转至 `/login`。
-- `HORUS_DB_CONNECTION_LIMIT`：MySQL 连接池大小，默认 `10`。
-- `HORUS_DB_PUSH` / `HORUS_DB_INIT`：容器启动入口的开关，仅影响镜像里的 `docker-entrypoint.sh`（`npm run dev` 不读）。表结构改为在外部 MySQL 上执行 `deploy/mysql/01-schema.sql`（推荐入口 `../scripts/init-sql.sh`）时，设 `HORUS_DB_PUSH=false` 跳过 `drizzle-kit push`；已执行 `02-init-owner.sql` 时再设 `HORUS_DB_INIT=false` 跳过负责人初始化。跳过 push 后启动仍会校验 7 张表齐全。
-- `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT`：容器入口等 MySQL 的秒数上限（默认 `90`）与单个数据库步骤的墙钟上限（默认 `180`，`0` 关闭），避免 Pod 连不上 MySQL 时启动无限期挂住。
+- `HORUS_DB_CONNECTION_LIMIT`：数据库连接池大小；MySQL 默认 `10`，Vercel 上 PostgreSQL 默认 `3`（应配合 Supabase 连接池使用）。
+- `HORUS_DB_PUSH` / `HORUS_DB_INIT`：容器启动入口的开关，仅影响镜像里的 `docker-entrypoint.sh`（`npm run dev` 不读）。可在 MySQL 的 `deploy/mysql/` 或 PostgreSQL 的 `deploy/postgres/` 中提前执行对应 SQL，再设置 `HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`。跳过 push 后启动仍会校验 7 张表齐全。
+- `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT`：容器入口等待数据库的秒数上限（默认 `90`）与单个数据库步骤的墙钟上限（默认 `180`，`0` 关闭），避免数据库不可达时启动无限期挂住。
 - `APP_URL`：钉钉摘要链接的兜底地址。
 - `HORUS_NEW_WINDOW_DAYS`：首页「本周新建」滚动窗口，默认 `7`，允许 1–90。运行时读取，并随工作台数据下发给页面。
 - `NEXT_PUBLIC_NEW_WINDOW_DAYS`：同上窗口的构建期兜底。两者都配置时，以 `HORUS_NEW_WINDOW_DAYS` 为准。
@@ -43,15 +44,15 @@ npm run dev
 
 ### 无数据库的界面预览
 
-如果当前环境没有 MySQL，只需查看页面布局与示例数据，可在 `frontend/` 运行：
+如果当前环境尚未配置数据库、只需查看页面布局与示例数据，可在 `frontend/` 运行：
 
 ```bash
 HORUS_PREVIEW_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
-访问 `http://localhost:3000`。这是**仅在 `NODE_ENV=development` 生效的只读预览**：使用内存示例数据，不会连接 MySQL、灌入数据库或发送钉钉通知；登录和全部写接口返回 503，页面显示明显提示。`/api/health` 返回 `{"ok":true,"mode":"read-only-preview"}`，**不代表生产数据库健康**。完整可交互演示仍需按上文配置 MySQL 并显式开启 `HORUS_DEMO_MODE=true`。生产构建即使设置了 `HORUS_PREVIEW_MODE` 也不会启用预览。
+访问 `http://localhost:3000`。这是**仅在 `NODE_ENV=development` 生效的只读预览**：使用内存示例数据，不会连接任何数据库、灌入数据或发送钉钉通知；登录和全部写接口返回 503，页面显示明显提示。`/api/health` 返回 `{"ok":true,"mode":"read-only-preview"}`，**不代表生产数据库健康**。完整可交互演示仍需按上文配置 MySQL 或 PostgreSQL 并显式开启 `HORUS_DEMO_MODE=true`。生产构建即使设置了 `HORUS_PREVIEW_MODE` 也不会启用预览。
 
-在 Arena 的 HTTPS iframe 中验证**真实 MySQL 登录**时，可显式设置 `HORUS_EMBEDDED_PREVIEW=true` 启动应用。部分浏览器彻底阻止第三方 Cookie，因此此模式额外在 `sessionStorage` 保存当前标签页的临时令牌，并通过 `Authorization` 请求工作台；关闭标签页后需要重新登录。此令牌可被页面 JavaScript 读取，**仅允许在隔离的沙箱预览使用，绝不可用于真实业务或内网投产**。常规部署不要设置这个变量，继续使用 HttpOnly Cookie 策略。避免在登录期间切换开发热更新版本，必要时用 `npm run build` 生成稳定的 standalone 预览。
+在 Arena 的 HTTPS iframe 中验证**真实数据库登录**时，可显式设置 `HORUS_EMBEDDED_PREVIEW=true` 启动应用。部分浏览器彻底阻止第三方 Cookie，因此此模式额外在 `sessionStorage` 保存当前标签页的临时令牌，并通过 `Authorization` 请求工作台；关闭标签页后需要重新登录。此令牌可被页面 JavaScript 读取，**仅允许在隔离的沙箱预览使用，绝不可用于真实业务或内网投产**。常规部署不要设置这个变量，继续使用 HttpOnly Cookie 策略。避免在登录期间切换开发热更新版本，必要时用 `npm run build` 生成稳定的 standalone 预览。
 
 ## 账号与安全
 
@@ -61,13 +62,15 @@ HORUS_PREVIEW_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
 
 ## 数据模型
 
-MySQL schema 包含团队、成员、需求、会话、审计日志、通知设置和通知日志七张表。ID/唯一键使用有长度的 `VARCHAR`；结构化字段使用原生 `JSON`；ISO-8601 UTC 时间以 `VARCHAR(40)` 保存，避免数据库时区转换引入排序或过期判断偏差。
+MySQL 与 PostgreSQL schema 都包含团队、成员、需求、会话、审计日志、通知设置和通知日志七张表。ID/唯一键使用有长度的 `VARCHAR`；结构化字段分别使用原生 `JSON` / `JSONB`；ISO-8601 UTC 时间以 `VARCHAR(40)` 保存，避免数据库时区转换引入排序或过期判断偏差。两种 schema 分别位于 `src/db/schema.mysql.ts`、`src/db/schema.postgres.ts`，通过 `src/db/schema.ts` 按 `DATABASE_URL` 选择。
 
 ## 开发与验证
 
 ```bash
 npm run test:domain
-npm run test:schema-sql   # deploy/mysql 的 SQL 与 schema.ts / 入口校验是否漂移
+npm run test:schema-sql      # MySQL SQL 与 schema / Docker 入口校验
+npm run test:schema-postgres # PostgreSQL SQL 与 Drizzle schema 校验
+npm run test:database-dialect # DATABASE_URL 的方言选择
 npm run typecheck
 npm run lint
 npm run build
@@ -75,7 +78,7 @@ npm run build
 
 `npm run test:digest` 在已配置 `DATABASE_URL` 时验证每日摘要的数据库抢占，不会调用钉钉。
 
-接口与浏览器验收使用独立临时团队/成员。先以 `HORUS_DEMO_MODE=true` 启动已初始化的测试 MySQL 与应用，再运行：
+接口与浏览器验收使用独立临时团队/成员。先以 `HORUS_DEMO_MODE=true` 启动已初始化的测试 MySQL 或 PostgreSQL 与应用，再运行：
 
 ```bash
 npm run test:acceptance

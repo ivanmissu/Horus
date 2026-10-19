@@ -15,7 +15,9 @@
     "test:digest": "node --experimental-strip-types tests/digest-claim.mjs",
     "test:deployment": "node --experimental-strip-types tests/deployment.mjs",
     "test:schema-sql": "node tests/schema-sql.mjs",
-    "test:notification-settings": "node --experimental-strip-types tests/notification-settings.mjs"
+    "test:notification-settings": "node --experimental-strip-types tests/notification-settings.mjs",
+    "test:schema-postgres": "node tests/schema-postgres.mjs",
+    "test:database-dialect": "node --experimental-strip-types tests/database-dialect.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -26,6 +28,7 @@
     "lucide-react": "^1.57.0",
     "mysql2": "^3.15.3",
     "next": "^16.4.1",
+    "pg": "^8.23.1",
     "playwright": "^1.64.1",
     "react": "19.2.6",
     "react-dom": "19.2.6"
@@ -33,6 +36,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",
     "@types/node": "22.19.15",
+    "@types/pg": "^8.23.1",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "drizzle-kit": "0.31.10",

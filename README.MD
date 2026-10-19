@@ -8,7 +8,7 @@ Horus 是面向**小型研发团队**的轻量化需求看盘与里程碑跟踪�
 
 工作台默认按团队分组展示全部未归档需求（含已上线待归档），三类风险以标签高亮并可一键筛选，让负责人和 PM 一眼看清「现在最该盯什么」。支持需求全生命周期推进、阶段模板自定义、成员与团队管理、钉钉每日异常摘要推送，以及移动端只读查看。
 
-> 技术栈：Next.js App Router · React 19 · Drizzle ORM · MySQL 8.0 · 单实例容器（Docker Compose 或 Kubernetes）。生产默认强制登录，不灌演示数据。
+> 技术栈：Next.js App Router · React 19 · Drizzle ORM · MySQL 8.0 / PostgreSQL（含 Supabase）双数据库 · 生产默认强制登录，不灌演示数据。`DATABASE_URL` 会自动选择数据库驱动；Docker Compose 默认使用 MySQL，Vercel + Supabase 使用 PostgreSQL。
 
 ## 功能概览
 
@@ -32,16 +32,17 @@ Horus 是面向**小型研发团队**的轻量化需求看盘与里程碑跟踪�
 
 ## Quick Start（本地开发）
 
-要求：Node.js 22+、MySQL 8.0+。
+要求：Node.js 22+，以及 MySQL 8.0+ 或 PostgreSQL 15+。
 
 ```bash
 # 1. 安装依赖
 cd frontend
 npm install
 
-# 2. 准备数据库（MySQL 8.0）
-#    创建数据库 horus 与用户 horus，然后设置连接地址
+# 2. 任选一个数据库配置（下面演示 MySQL；PostgreSQL/Supabase 用 postgresql://）
+# MySQL：先创建数据库 horus 与用户 horus
 export DATABASE_URL='mysql://horus:change-me@127.0.0.1:3306/horus'
+# PostgreSQL 示例：export DATABASE_URL='postgresql://postgres:password@db-host:5432/postgres?sslmode=require'
 
 # 3. 同步表结构 + 初始化负责人（默认账号 admin，首次登录设密）
 npm run db:push
@@ -59,7 +60,7 @@ npm run dev
 - `HORUS_DEMO_MODE=true`：仅用于本地/受控演示，自动灌入演示团队与需求并允许免登录；**生产禁止开启**
 - `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME`：初始负责人账号 / 姓名（默认 `admin` / `团队负责人`）
 - `HORUS_NEW_WINDOW_DAYS` 与 `NEXT_PUBLIC_NEW_WINDOW_DAYS`：「本周新建」窗口天数（默认 7，范围 1–90，两者保持一致）
-- `HORUS_DB_CONNECTION_LIMIT`：MySQL 连接池大小（默认 10）
+- `HORUS_DB_CONNECTION_LIMIT`：连接池大小（MySQL 默认 10；Vercel PostgreSQL 默认 3）
 - `APP_URL`：钉钉摘要链接兜底地址
 - `HORUS_DB_PUSH` / `HORUS_DB_INIT`：容器启动时是否自动同步表结构 / 初始化负责人（仅影响镜像入口脚本，`npm run dev` 不读；详见[部署说明](docs/kubernetes-deployment.md)）
 
@@ -69,7 +70,7 @@ npm run dev
 HORUS_PREVIEW_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
-> 这是只读预览，使用内存示例数据，不连接 MySQL，写接口返回 503，不代表生产数据库健康。
+> 这是只读预览，使用内存示例数据，不连接数据库，写接口返回 503，不代表生产数据库健康。
 
 验证命令：
 
@@ -79,6 +80,10 @@ npm run typecheck     # TypeScript
 npm run lint          # ESLint
 npm run build         # 生产构建
 ```
+
+## 生产部署（Vercel + Supabase PostgreSQL）
+
+项目已支持 Supabase PostgreSQL 与现有 MySQL 双数据库，Vercel 部署步骤见 [`docs/vercel-supabase-deployment.md`](docs/vercel-supabase-deployment.md)。设置 Vercel 环境变量 `DATABASE_URL` 为 PostgreSQL 连接串即可；MySQL 部署仍可沿用下方 Docker/Kubernetes 文档。
 
 ## 生产部署（Kubernetes · 外部 MySQL）
 
@@ -162,6 +167,7 @@ chmod 600 .env && chmod +x scripts/*.sh
 
 ## 相关文档
 
+- Vercel + Supabase PostgreSQL 部署：[`docs/vercel-supabase-deployment.md`](docs/vercel-supabase-deployment.md)
 - 需求文档：[`docs/specs/horus-design.md`](docs/specs/horus-design.md)
 - 项目计划：[`docs/specs/horus-project-plan.md`](docs/specs/horus-project-plan.md)
 - 生产部署手册：[`docs/deployment-guide.md`](docs/deployment-guide.md)

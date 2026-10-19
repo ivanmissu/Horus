@@ -1,6 +1,7 @@
 import { and, eq, isNull, ne, or } from "drizzle-orm";
 import { db } from "../db/index.ts";
 import { notificationSettings } from "../db/schema.ts";
+import { databaseDialect } from "../db/dialect.ts";
 
 /**
  * Atomically claim today's scheduled digest.
@@ -9,12 +10,17 @@ import { notificationSettings } from "../db/schema.ts";
  * Relative imports keep this callable from Node's type-stripping test runner.
  */
 export async function claimScheduledDigest(today: string, id = "default") {
-  const updated = await db.update(notificationSettings).set({ lastRunDate: today }).where(and(
+  const claim = db.update(notificationSettings).set({ lastRunDate: today }).where(and(
     eq(notificationSettings.id, id),
     eq(notificationSettings.enabled, true),
     ne(notificationSettings.webhook, ""),
     or(isNull(notificationSettings.lastRunDate), ne(notificationSettings.lastRunDate, today)),
   ));
+  if (databaseDialect === "postgres") {
+    const updated = await (claim as any).returning({ id: notificationSettings.id });
+    return updated.length > 0;
+  }
+  const updated = await claim;
   const header = (Array.isArray(updated) ? updated[0] : updated) as { affectedRows?: number };
   return Number(header?.affectedRows ?? 0) > 0;
 }

@@ -2,4 +2,5 @@
 .env.local
 *.sql
 !deploy/mysql/*.sql
+!deploy/postgres/*.sql
 backups/

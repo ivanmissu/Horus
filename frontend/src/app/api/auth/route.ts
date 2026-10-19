@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
 import { and, eq, isNull } from "drizzle-orm";
-import { db } from "@/db";
+import { databaseDialect, db } from "@/db";
 import { members, sessions } from "@/db/schema";
 import { ensureSeed } from "@/db/seed";
 import { AppError, hashToken } from "@/lib/auth";
@@ -13,7 +13,7 @@ import { isPreviewMode } from "@/lib/preview";
 const attempts = new Map<string, { count: number; until: number }>();
 export async function POST(request: NextRequest) {
   try {
-    if (isPreviewMode()) throw new AppError("只读预览不支持账号登录，请连接 MySQL", 503);
+    if (isPreviewMode()) throw new AppError("只读预览不支持账号登录，请配置数据库", 503);
     if (process.env.HORUS_DEMO_MODE === "true") await ensureSeed();
     await purgeExpiredSessions();
     const body = await request.json();
@@ -41,8 +41,12 @@ export async function POST(request: NextRequest) {
     if (password.length < 8 || Buffer.byteLength(password, "utf8") > 72) throw new AppError("密码至少为 8 个字符，且不能超过 72 字节");
     if (!member.passwordHash) {
       const passwordHash = await hash(password, 12);
-      const updated = await db.update(members).set({ passwordHash }).where(and(eq(members.id, member.id), isNull(members.passwordHash)));
-      if (updated[0].affectedRows === 0) throw new AppError("此账号已设置密码，请重新登录", 409);
+      const passwordUpdate = db.update(members).set({ passwordHash }).where(and(eq(members.id, member.id), isNull(members.passwordHash)));
+      const updated = databaseDialect === "postgres"
+        ? await (passwordUpdate as any).returning({ id: members.id })
+        : await passwordUpdate;
+      const saved = databaseDialect === "postgres" ? updated.length > 0 : Number(updated[0]?.affectedRows ?? 0) > 0;
+      if (!saved) throw new AppError("此账号已设置密码，请重新登录", 409);
     } else if (!(await compare(password, member.passwordHash))) throw new AppError("账号或密码不正确", 401);
     const token = randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + 7 * 86400000);
@@ -76,7 +80,7 @@ export async function POST(request: NextRequest) {
     const message = error instanceof AppError
       ? error.message
       : databaseMissing
-        ? "尚未配置 MySQL 数据库，请先设置 DATABASE_URL 并初始化数据表"
+        ? "尚未配置数据库，请先设置 DATABASE_URL 并初始化数据表"
         : "登录暂时不可用，请稍后重试";
     const status = error instanceof AppError ? error.status : databaseMissing ? 503 : 500;
     return NextResponse.json({ error: message }, { status });

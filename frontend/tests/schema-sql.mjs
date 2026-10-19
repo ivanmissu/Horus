@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 
 // Guards the "initialize MySQL with SQL, skip drizzle-kit at startup" path:
 // deploy/mysql/01-schema.sql is authoritative there, so it must not drift away from
-// the Drizzle schema the app queries with, and the entrypoint must verify the same tables.
+// the MySQL Drizzle schema, and the generic container entrypoint must verify its tables.
 const root = new URL("../../", import.meta.url); // repository root
 
-const schemaSource = readFileSync(new URL("frontend/src/db/schema.ts", root), "utf8");
+const schemaSource = readFileSync(new URL("frontend/src/db/schema.mysql.ts", root), "utf8");
 const sqlSource = readFileSync(new URL("deploy/mysql/01-schema.sql", root), "utf8");
 const entrySource = readFileSync(new URL("frontend/docker-entrypoint.sh", root), "utf8");
 

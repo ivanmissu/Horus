@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
-import { db } from "@/db";
+import { databaseDialect, db } from "@/db";
 import { teams, members, requirements, auditLogs, notificationSettings, sessions } from "@/db/schema";
 import { loadWorkspace } from "@/lib/data";
 import { isPreviewMode } from "@/lib/preview";
@@ -38,7 +38,7 @@ export async function GET() {
 }
 export async function POST(request: NextRequest) {
   try {
-    if (isPreviewMode()) throw new AppError("只读预览：未连接 MySQL，不能保存操作", 503);
+    if (isPreviewMode()) throw new AppError("只读预览：未连接数据库，不能保存操作", 503);
     const origin = request.headers.get("origin");
     if (origin && new URL(origin).host !== request.headers.get("host") && new URL(origin).host !== request.headers.get("x-forwarded-host")) throw new AppError("不允许跨站操作", 403);
     const { actor } = await getActor();
@@ -54,7 +54,10 @@ export async function POST(request: NextRequest) {
       if (!team) throw new AppError("团队不存在", 404);
       const values = { teamId, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority || "medium"), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate), stageId: team.stages[0].id, createdBy: actor.id, updatedBy: actor.id };
       result = await db.transaction(async tx => {
-        const [created] = await tx.insert(requirements).values(values).$returningId();
+        const insert = tx.insert(requirements).values(values);
+        const [created] = databaseDialect === "postgres"
+          ? await (insert as any).returning({ id: requirements.id })
+          : await insert.$returningId();
         await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: created.id, action, detail: values });
         return { id: created.id };
       });
@@ -205,6 +208,7 @@ export async function POST(request: NextRequest) {
       const time = text(body.time, "推送时间", true);
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new AppError("推送时间无效");
       const enabled = body.enabled === true;
+      if (enabled && process.env.VERCEL === "1") throw new AppError("当前 Vercel 部署未配置定时任务，暂不能启用每日自动推送；手动测试发送仍可使用", 409);
       if (enabled && !webhook) throw new AppError("开启自动推送前，请填写 Webhook");
       const appUrl = text(body.appUrl, "系统链接", false, 1000);
       if (webhook && !appUrl) throw new AppError("请填写摘要中的系统访问链接");

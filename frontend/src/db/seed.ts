@@ -1,5 +1,5 @@
-import { drizzle } from "drizzle-orm/mysql2";
-import { pool } from "@/db";
+import { sql } from "drizzle-orm";
+import { databaseDialect, db, pool } from "@/db";
 import { teams, members, requirements, notificationSettings } from "@/db/schema";
 import { DEFAULT_STAGES, todayString } from "@/lib/domain";
 
@@ -9,15 +9,18 @@ export function ensureSeed() {
   return seeded;
 }
 async function seed() {
-  const connection = await pool.getConnection();
+  const connection: any = databaseDialect === "mysql" ? await (pool as any).getConnection() : undefined;
   let lockAcquired = false;
   let connectionHealthy = true;
   try {
-    const [lockResult] = await connection.query("select get_lock(?, 10) as acquired", ["horus_seed"]);
-    const lockRows = lockResult as unknown as { acquired: number | null }[];
-    if (!Array.isArray(lockRows) || Number(lockRows[0]?.acquired) !== 1) throw new Error("Unable to acquire MySQL seed lock");
-    lockAcquired = true;
-    await drizzle(connection).transaction(async tx => {
+    if (databaseDialect === "mysql") {
+      const [lockResult] = await connection.query("select get_lock(?, 10) as acquired", ["horus_seed"]);
+      const lockRows = lockResult as unknown as { acquired: number | null }[];
+      if (!Array.isArray(lockRows) || Number(lockRows[0]?.acquired) !== 1) throw new Error("Unable to acquire MySQL seed lock");
+      lockAcquired = true;
+    }
+    await db.transaction(async tx => {
+      if (databaseDialect === "postgres") await tx.execute(sql`SELECT pg_advisory_xact_lock(22061015)`);
       const existing = await tx.select({ id: teams.id }).from(teams).limit(1);
       if (existing.length) return;
       await tx.insert(teams).values([
@@ -98,14 +101,16 @@ async function seed() {
     connectionHealthy = false;
     throw error;
   } finally {
-    if (connectionHealthy && lockAcquired) {
+    if (connection && connectionHealthy && lockAcquired) {
       try {
         await connection.query("select release_lock(?)", ["horus_seed"]);
       } catch {
         connectionHealthy = false;
       }
     }
-    if (connectionHealthy) connection.release();
-    else connection.destroy();
+    if (connection) {
+      if (connectionHealthy) connection.release();
+      else connection.destroy();
+    }
   }
 }

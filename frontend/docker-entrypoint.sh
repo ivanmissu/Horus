@@ -1,23 +1,12 @@
 #!/bin/sh
-# Horus container bootstrap.
+# Horus container bootstrap. Load the mounted environment first, wait for the
+# configured database, prepare the schema, initialize the owner, then start Next.js.
 #
-# Startup order: docker-entrypoint.cjs loads the mounted .env, then this script
-# waits for MySQL, prepares the schema, bootstraps the owner account and
-# finally execs Next.js.
-#
-# Database switches (all optional, read from the process environment):
-#   HORUS_DB_PUSH=false       Never run `drizzle-kit push`. Use when the DDL is applied
-#                             outside the container (deploy/mysql/01-schema.sql), or when
-#                             the app account has no DDL rights. The seven tables are still
-#                             verified before the app starts, so a missing table fails here
-#                             instead of on the first business request.
-#   HORUS_DB_INIT=false       Skip the idempotent owner + notification-settings bootstrap.
-#                             Use when deploy/mysql/02-init-owner.sql has already run.
-#   HORUS_DB_WAIT_TIMEOUT=90  Seconds to keep trying MySQL before giving up.
-#   HORUS_DB_STEP_TIMEOUT=180 Wall-clock cap per database step, 0 disables it. Without it a
-#                             Pod that cannot reach MySQL hangs forever inside drizzle-kit
-#                             ("Pulling schema from database...").
-#   HORUS_MIGRATE_DIR=/opt/horus-migrate  Schema toolchain + src/db baked into the image.
+# HORUS_DB_PUSH=false skips drizzle-kit push but still verifies all seven tables.
+# HORUS_DB_INIT=false skips the idempotent owner/notification bootstrap.
+# HORUS_DB_WAIT_TIMEOUT=90 limits connection retries; HORUS_DB_STEP_TIMEOUT=180
+# limits each database step (0 disables the step timeout).
+# HORUS_MIGRATE_DIR=/opt/horus-migrate points to the bundled schema toolchain.
 
 set -eu
 
@@ -32,7 +21,6 @@ fail() {
   exit 1
 }
 
-# Accepts true/false (also 1/0, yes/no, on/off); anything else is a typo worth failing on.
 flag_is_true() {
   case $(printf '%s' "$1" | tr '[:upper:]' '[:lower:]') in
     true | 1 | yes | on) return 0 ;;
@@ -57,8 +45,6 @@ flag_is_true "$HORUS_DB_PUSH" HORUS_DB_PUSH || DO_PUSH=0
 DO_INIT=1
 flag_is_true "$HORUS_DB_INIT" HORUS_DB_INIT || DO_INIT=0
 
-# Wraps a command so a blocked network can stall the rollout forever, and turns an
-# unexplained timeout into an actionable message.
 run_step() {
   label=$1
   shift
@@ -71,7 +57,7 @@ run_step() {
   case "$status" in
     0) return 0 ;;
     124 | 137)
-      fail "$label did not finish within ${HORUS_DB_STEP_TIMEOUT}s and was killed. This Pod most likely cannot reach MySQL (DNS, firewall, security group, or a host of localhost/127.0.0.1 in DATABASE_URL). Fix connectivity, raise HORUS_DB_STEP_TIMEOUT, or pre-apply deploy/mysql/01-schema.sql and set HORUS_DB_PUSH=false + HORUS_DB_INIT=false."
+      fail "$label did not finish within ${HORUS_DB_STEP_TIMEOUT}s and was killed. Check database DNS, firewall, credentials, and that DATABASE_URL does not use localhost/127.0.0.1 from inside the container."
       ;;
     *) fail "$label failed (exit $status). See the log lines above." ;;
   esac
@@ -83,50 +69,61 @@ printf 'Database bootstrap: push=%s init=%s wait_timeout=%ss step_timeout=%ss\n'
   "$HORUS_DB_WAIT_TIMEOUT" "$HORUS_DB_STEP_TIMEOUT"
 
 cd "$MIGRATE_DIR"
-
-printf 'Waiting for MySQL...\n'
-run_step "Waiting for MySQL" node --input-type=module <<'EOF'
-import mysql from "mysql2/promise";
-
+printf 'Waiting for database...\n'
+run_step "Waiting for database" node --input-type=module <<'EOF'
 const url = new URL(process.env.DATABASE_URL);
+const isPostgres = url.protocol === "postgres:" || url.protocol === "postgresql:";
 const deadline = Date.now() + Number(process.env.HORUS_DB_WAIT_TIMEOUT || 90) * 1000;
 let lastMessage = "unknown error";
 while (Date.now() < deadline) {
   try {
-    const connection = await mysql.createConnection({
-      host: url.hostname,
-      port: url.port ? Number(url.port) : 3306,
-      user: decodeURIComponent(url.username),
-      password: decodeURIComponent(url.password),
-      database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-      // Fail each probe attempt fast instead of relying on the OS TCP timeout.
-      connectTimeout: 5000,
-    });
-    await connection.query("SELECT 1");
-    await connection.end();
-    console.log("MySQL is ready");
+    if (isPostgres) {
+      const { Pool } = await import("pg");
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        max: 1,
+        ...(url.searchParams.get("sslmode") && url.searchParams.get("sslmode") !== "disable"
+          ? { ssl: { rejectUnauthorized: false } }
+          : {}),
+        connectionTimeoutMillis: 5000,
+      });
+      try { await pool.query("SELECT 1"); } finally { await pool.end(); }
+      console.log("PostgreSQL is ready");
+    } else if (url.protocol === "mysql:") {
+      const { default: mysql } = await import("mysql2/promise");
+      const connection = await mysql.createConnection({
+        host: url.hostname,
+        port: url.port ? Number(url.port) : 3306,
+        user: decodeURIComponent(url.username),
+        password: decodeURIComponent(url.password),
+        database: decodeURIComponent(url.pathname.slice(1)),
+        connectTimeout: 5000,
+      });
+      await connection.query("SELECT 1");
+      await connection.end();
+      console.log("MySQL is ready");
+    } else {
+      throw new Error("DATABASE_URL must use mysql://, postgres://, or postgresql://");
+    }
     process.exit(0);
   } catch (error) {
     lastMessage = error instanceof Error ? error.message : String(error);
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
 }
-console.error(`MySQL did not become ready within ${process.env.HORUS_DB_WAIT_TIMEOUT || 90}s: ${lastMessage}`);
+console.error(`Database did not become ready within ${process.env.HORUS_DB_WAIT_TIMEOUT || 90}s: ${lastMessage}`);
 process.exit(1);
 EOF
 
 if [ "$DO_PUSH" -eq 1 ]; then
-  printf 'Synchronizing MySQL schema...\n'
-  # drizzle-kit push logs failures and still exits 0, which is why the table
-  # check below runs in both modes.
+  printf 'Synchronizing database schema...\n'
+  # Verify below too: drizzle-kit can log schema errors without a failing exit code.
   run_step "drizzle-kit push" env CI=1 ./node_modules/.bin/drizzle-kit push --force --verbose --config ./drizzle.config.ts
 else
   printf 'Skipping schema synchronization (HORUS_DB_PUSH=false); verifying tables only...\n'
 fi
 
 run_step "Schema verification" node --input-type=module <<'EOF'
-import mysql from "mysql2/promise";
-
 const required = [
   "horus_teams",
   "horus_members",
@@ -137,33 +134,53 @@ const required = [
   "horus_notification_logs",
 ];
 const url = new URL(process.env.DATABASE_URL);
-const connection = await mysql.createConnection({
-  host: url.hostname,
-  port: url.port ? Number(url.port) : 3306,
-  user: decodeURIComponent(url.username),
-  password: decodeURIComponent(url.password),
-  database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-  connectTimeout: 5000,
-});
+const isPostgres = url.protocol === "postgres:" || url.protocol === "postgresql:";
 let rows;
-try {
-  [rows] = await connection.query(
-    "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()",
-  );
-} finally {
-  await connection.end();
+if (isPostgres) {
+  const { Pool } = await import("pg");
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 1,
+    ...(url.searchParams.get("sslmode") && url.searchParams.get("sslmode") !== "disable"
+      ? { ssl: { rejectUnauthorized: false } }
+      : {}),
+  });
+  try {
+    rows = (await pool.query(
+      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'",
+    )).rows;
+  } finally {
+    await pool.end();
+  }
+} else {
+  const { default: mysql } = await import("mysql2/promise");
+  const connection = await mysql.createConnection({
+    host: url.hostname,
+    port: url.port ? Number(url.port) : 3306,
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: decodeURIComponent(url.pathname.slice(1)),
+    connectTimeout: 5000,
+  });
+  try {
+    [rows] = await connection.query(
+      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()",
+    );
+  } finally {
+    await connection.end();
+  }
 }
 const present = new Set(rows.map(row => String(row.name ?? row.NAME ?? row.table_name ?? "")));
 const missing = required.filter(name => !present.has(name));
 if (missing.length) {
-  const hint =
-    process.env.HORUS_DB_PUSH && /^(false|0|no|off)$/i.test(process.env.HORUS_DB_PUSH)
-      ? "Apply deploy/mysql/01-schema.sql on this database (./scripts/init-sql.sh), or set HORUS_DB_PUSH=true to let the container create them."
-      : "Check the drizzle-kit output above; the account also needs CREATE/ALTER rights on this database.";
+  const schemaPath = isPostgres ? "deploy/postgres/01-schema.sql" : "deploy/mysql/01-schema.sql";
+  const hint = process.env.HORUS_DB_PUSH && /^(false|0|no|off)$/i.test(process.env.HORUS_DB_PUSH)
+    ? `Apply ${schemaPath} on this database, or set HORUS_DB_PUSH=true to let the container create the tables.`
+    : "Check the drizzle-kit output above; the database account needs CREATE/ALTER rights.";
   console.error(`Schema sync did not create: ${missing.join(", ")}. ${hint}`);
   process.exit(1);
 }
-console.log(`MySQL schema ready (${required.length} tables)`);
+console.log(`${isPostgres ? "PostgreSQL" : "MySQL"} schema ready (${required.length} tables)`);
 EOF
 
 if [ "$DO_INIT" -eq 1 ]; then
