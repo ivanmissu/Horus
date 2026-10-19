@@ -128,6 +128,14 @@ try {
   assert.equal(await claimScheduledDigest(todayString(), claimId), false);
   check("Scheduled digest claim is atomic and ignores disabled or unconfigured settings");
 
+  const pendingTitle = "__验收：已上线待归档";
+  const pendingId = (await post("createRequirement", { teamId, title: pendingTitle, priority: "medium" }, 200, cookie)).id;
+  await post("advance", { id: pendingId, stageId: "released" }, 200, cookie);
+  const pendingRequirement = (await workspace()).requirements.find(r => r.id === pendingId);
+  assert.equal(pendingRequirement.status, "released");
+  assert.equal(pendingRequirement.archivedAt, null);
+  check("Released requirement stays in flight until archived");
+
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.on("pageerror", e => errors.push(e.message));
@@ -167,9 +175,18 @@ try {
 
   await page.goto(base, { waitUntil: "networkidle" });
   assert.match(await page.locator(".date-range").innerText(), new RegExp(`近 ${baseline.newWindowDays} 天`));
+  const inFlight = (await workspace()).requirements.filter(r => !r.archivedAt);
+  assert.equal(await page.locator(".metric-card").filter({ hasText: "全部在途" }).locator(".metric-middle strong").textContent(), String(inFlight.length).padStart(2, "0"));
+  await page.locator(".focus-tab").filter({ hasText: "全部在途" }).click();
+  assert.equal(await page.locator(".requirement-table tbody tr").count(), inFlight.length);
+  const pendingRow = page.locator(".requirement-table tbody tr").filter({ hasText: pendingTitle });
+  assert.equal(await pendingRow.count(), 1);
+  assert.equal(await pendingRow.locator(".badge").filter({ hasText: "待归档" }).count(), 1);
+  const teamInFlight = inFlight.filter(r => r.teamId === teamId).length;
+  assert.equal(await page.locator(".team-nav .nav-item").filter({ hasText: editedTeamName }).locator(".nav-count").textContent(), String(teamInFlight));
   await page.locator(".focus-tab").filter({ hasText: "存在卡点" }).click();
   assert.equal(await page.locator(".requirement-table tbody tr").count(), baseline.requirements.filter(r => r.status === "active" && r.blocked).length);
-  await page.locator(".focus-tab").filter({ hasText: "全部关注" }).click();
+  await page.locator(".focus-tab").filter({ hasText: "全部在途" }).click();
   const group = page.locator(".group-toggle").first();
   await group.click();
   assert.equal(await group.getAttribute("aria-expanded"), "false");

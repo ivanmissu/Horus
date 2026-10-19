@@ -49,6 +49,7 @@ export function isNew(r: Requirement, now: string | Date = new Date(), windowDay
 export function isOverdue(r: Requirement, now: string | Date = new Date()) {
   return r.status === "active" && r.priority === "high" && !!r.expectedDate && r.expectedDate < todayString(now);
 }
+/** Union of the three highlight rules; the workbench itself lists every unarchived requirement. */
 export function isFocused(r: Requirement, now: string | Date = new Date(), windowDays = newWindowDays()) {
   return r.status === "active" && (isNew(r, now, windowDays) || r.blocked || isOverdue(r, now));
 }
