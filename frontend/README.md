@@ -33,6 +33,8 @@ npm run dev
 - `HORUS_INIT_OWNER_NAME`：首次创建负责人时使用的姓名，默认 `团队负责人`。
 - `HORUS_DEMO_MODE=true`：仅用于本地/受控演示。显式启用后自动灌入演示团队和需求，并允许免登录负责人体验；默认未开启，匿名访问工作台会跳转至 `/login`。
 - `HORUS_DB_CONNECTION_LIMIT`：MySQL 连接池大小，默认 `10`。
+- `HORUS_DB_PUSH` / `HORUS_DB_INIT`：容器启动入口的开关，仅影响镜像里的 `docker-entrypoint.sh`（`npm run dev` 不读）。表结构改为在外部 MySQL 上执行 `deploy/mysql/01-schema.sql`（推荐入口 `../scripts/init-sql.sh`）时，设 `HORUS_DB_PUSH=false` 跳过 `drizzle-kit push`；已执行 `02-init-owner.sql` 时再设 `HORUS_DB_INIT=false` 跳过负责人初始化。跳过 push 后启动仍会校验 7 张表齐全。
+- `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT`：容器入口等 MySQL 的秒数上限（默认 `90`）与单个数据库步骤的墙钟上限（默认 `180`，`0` 关闭），避免 Pod 连不上 MySQL 时启动无限期挂住。
 - `APP_URL`：钉钉摘要链接的兜底地址。
 - `HORUS_NEW_WINDOW_DAYS`：首页「本周新建」滚动窗口，默认 `7`，允许 1–90。运行时读取，并随工作台数据下发给页面。
 - `NEXT_PUBLIC_NEW_WINDOW_DAYS`：同上窗口的构建期兜底。两者都配置时，以 `HORUS_NEW_WINDOW_DAYS` 为准。
@@ -65,6 +67,7 @@ MySQL schema 包含团队、成员、需求、会话、审计日志、通知设�
 
 ```bash
 npm run test:domain
+npm run test:schema-sql   # deploy/mysql 的 SQL 与 schema.ts / 入口校验是否漂移
 npm run typecheck
 npm run lint
 npm run build

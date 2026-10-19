@@ -33,10 +33,11 @@ horus-app ──出站──► https://oapi.dingtalk.com（每日异常摘要�
 | `.env.example` | 环境变量模板，复制为 `.env` 后改密码与地址 |
 | `scripts/deploy.sh` | **一键部署**：环境检查 → 构建启动 → 健康检查（支持 `--no-build`） |
 | `scripts/init-db.sh` | 数据库初始化/重跑校验：建表 + 初始负责人 + 7 表齐全性校验（幂等） |
+| `scripts/init-sql.sh` | 在**外部/已有 MySQL** 上一次性建表 + 建负责人（跑 `deploy/mysql/*.sql` 并校验），之后可关掉容器内的 Drizzle 同步 |
 | `scripts/backup.sh` / `scripts/restore.sh` | 数据库备份（.sql.gz）/ 恢复（恢复前自动留底，需 `--yes` 确认） |
 | `deploy/mysql/01-schema.sql` | 7 张表建表 DDL（由 Drizzle Schema 生成），供 DBA 人工建库/评审 |
 | `deploy/mysql/02-init-owner.sql` | 初始负责人 + 通知设置 SQL 版（与应用 `db:init` 等价，幂等） |
-| `frontend/docker-entrypoint.sh` | 容器启动脚本：等 MySQL → 同步表结构 → 初始化负责人 → 启动应用 |
+| `frontend/docker-entrypoint.sh` | 容器启动脚本：等 MySQL → 同步表结构 → 初始化负责人 → 启动应用（可用 `HORUS_DB_PUSH` / `HORUS_DB_INIT` 关掉前两步） |
 
 ---
 
@@ -144,13 +145,15 @@ docker compose logs -f horus         # 看启动过程，Ctrl+C 退出不影响�
 1. 等待 MySQL 可查询（最长 90 秒，靠 compose 健康检查 + 脚本双重等待）；
 2. `drizzle-kit push` 同步 7 张表结构，并逐表校验齐全，缺表直接启动失败（不会假装成功）；
 3. `db:init` 幂等创建初始负责人与通知设置默认行——每次启动都跑，但**不覆盖**已有负责人密码和已保存的钉钉配置；
+
+第 2、3 步各有一个开关（`HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`，见第 5 节路径 D）。关掉第 2 步后**仍会校验 7 张表**，缺表照样拒绝启动，不会带着空库上线。
 4. 以 standalone 模式监听 `0.0.0.0:3000`，进程内每分钟调度检查钉钉摘要与过期会话清理（单实例假设，勿扩容）。
 
 ---
 
-## 5. 数据库初始化（三条路径，按需选一）
+## 5. 数据库初始化（四条路径，按需选一）
 
-正常情况**路径 A 就够了**，B/C 是给重跑校验和 DBA 人工管库场景准备的。
+正常情况**路径 A 就够了**，B 用于重跑校验，C/D 面向 DBA 人工管库、或容器连不上/不适合跑 Drizzle 的场景。
 
 ### 路径 A：全自动（默认，推荐）
 
@@ -186,17 +189,51 @@ GRANT ALL PRIVILEGES ON horus.* TO 'horus'@'%';
 ```
 
 ```bash
-# 2) 在空库依次执行建表与初始数据（两个脚本头部都写了注意事项，先看再跑）
+# 2) 在空库依次执行建表与初始数据（用 Compose 自带的 MySQL 时，先只起库：docker compose up -d mysql）
 docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < deploy/mysql/01-schema.sql
 docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < deploy/mysql/02-init-owner.sql
+#    外部 MySQL 用仓库脚本更省事（带结果校验，见路径 D）
 # 3) 之后照常 ./scripts/deploy.sh 启动应用；启动时的结构同步与 db:init 是幂等的，不会与手工结果冲突
+#    （想让应用完全不碰 Drizzle，见路径 D）
 ```
 
 注意事项：
 
 - `01-schema.sql` 是一次性建表脚本（7 张表：`horus_teams`、`horus_members`、`horus_requirements`、`horus_sessions`、`horus_audit_logs`、`horus_notification_settings`、`horus_notification_logs`），对已有数据的库重复执行会因表/外键已存在报错，不要拿它当升级脚本；结构变更仍走应用启动时的 Drizzle 同步或 DBA 评审后的变更单。
 - `02-init-owner.sql` 执行前可改文件头的 `@owner_username` / `@owner_name`；与 `db:init` 二选一即可，重复执行无副作用。若走 compose 部署，`.env` 里的 `HORUS_INIT_OWNER_*` 应与 SQL 中一致，避免两处口径不同。
-- 首选仍是路径 A：手工 SQL 一旦与 `frontend/src/db/schema.ts` 漂移，启动校验会以缺表/结构同步失败的形式暴露，但排查成本高于自动路径。
+- 首选仍是路径 A：手工 SQL 一旦与 `frontend/src/db/schema.ts` 漂移，启动校验会以缺表/结构同步失败的形式暴露，但排查成本高于自动路径。漂移可由 `npm run test:schema-sql` 提前查出（比对 `01-schema.sql` 与 `schema.ts` 的表名、列名和关键约束）。
+
+### 路径 D：提前建好表，容器内完全不跑 Drizzle（K8s / RDS / MySQL 5.7 常见）
+
+适合这些情况：MySQL 只能由 DBA 建表（不给应用账号 DDL）、应用账号只给 DML、Pod 到 MySQL 半通导致 `drizzle-kit push` 卡在 `Pulling schema from database...`、或实例是 MySQL 5.7（`push` 拉取 Schema 会失败）。
+
+```bash
+# 1) 建库建账号后，用 SQL 初始化一次（表 + 负责人 + 通知设置默认行，脚本会校验结果）
+#    外部 MySQL：
+DATABASE_URL='mysql://horus:<密码>@<mysql-host>:3306/horus' ./scripts/init-sql.sh
+#    Compose 自带的 MySQL（3306 不对外发布，走容器内客户端）：
+docker compose up -d mysql
+docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < deploy/mysql/01-schema.sql
+docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < deploy/mysql/02-init-owner.sql
+# 2) 关掉容器内的两步初始化（写在 .env 即可，compose 已把这几个变量透传给容器）
+printf 'HORUS_DB_PUSH=false\nHORUS_DB_INIT=false\n' >> .env
+# 3) 启动应用
+./scripts/deploy.sh --no-build
+```
+
+| 变量 | 默认 | 关掉后的效果 |
+|---|---|---|
+| `HORUS_DB_PUSH` | `true` | `false`：不执行 `drizzle-kit push`；启动时只查 `information_schema` 确认 7 张表存在 |
+| `HORUS_DB_INIT` | `true` | `false`：不执行 `db:init`。仅在已跑 `02-init-owner.sql` 时设置，否则没有负责人账号、无法首次登录 |
+| `HORUS_DB_WAIT_TIMEOUT` | `90` | 等 MySQL 可查询的秒数 |
+| `HORUS_DB_STEP_TIMEOUT` | `180` | 每个数据库步骤的墙钟上限（`0` 关闭）。让「连不上」变成明确失败，而不是无限期吊着 rollout |
+
+代价与纪律：
+
+- 表结构从此由**你**维护。每次升级前确认该版本 `frontend/src/db/schema.ts` 有无变化；有变化就先备份、由 DBA 执行对应 DDL（或临时把 `HORUS_DB_PUSH` 设回 `true` 启动一次同步后再关掉）。
+- 应用账号可以收紧到 `SELECT/INSERT/UPDATE/DELETE`，这通常是走本路径的原因。
+- 新库上线后请核对日志出现 `MySQL schema ready (7 tables)`；缺表会以 `Schema sync did not create: …` 直接启动失败。
+- 手工 SQL 与 Drizzle schema 的同步由 `npm run test:schema-sql` 兜底，改表时两侧都要动。
 
 ### 初始化做了/没做什么（避免误会）
 
@@ -303,6 +340,7 @@ git pull                                   # 2) 拉新代码（或解压新版�
 ```
 
 - 启动时的结构同步对无变更是空操作；`drizzle-kit push --force` 会自动接受 Drizzle 认为可能丢数据的变更（如删列），**发版前先看 schema diff**，不能接受自动删列时停在旧版，走 DBA 变更单手工迁移后再升级。
+- 走路径 D（`HORUS_DB_PUSH=false`）时**没有任何自动同步**：升级前必须自己确认表结构是否需要变更（对比 `frontend/src/db/schema.ts` 与库内结构，或跑一次 `npm run test:schema-sql` 看 SQL 文件有没有漂移），需要变更就由 DBA 执行 DDL 后再换镜像/重启。
 - 若改过「本周新建」窗口，`.env` 中 `HORUS_NEW_WINDOW_DAYS` 与 `NEXT_PUBLIC_NEW_WINDOW_DAYS` 保持一致再构建（前者运行时下发页面，后者是构建期兜底）。
 - 回滚：切回上一版代码重新 `./scripts/deploy.sh`，并用升级前备份 `./scripts/restore.sh <备份> --yes` 连库一起回退。不要只回滚应用而留下不兼容的新表结构。
 
@@ -339,6 +377,7 @@ cp .env.example .env && vi .env        # 按第 3 节改密码与 APP_URL
 | `deploy.sh` 报密码仍为默认值/字符非法 | `.env` 没改或密码带特殊字符 | 按第 3 节用 `openssl rand -hex 18` 重新生成，只用字母数字下划线 |
 | `horus` 一直重启，日志 `DATABASE_URL is required` | `.env` 不在仓库根目录，或 compose 没读到 | 确认在根目录执行、`MYSQL_PASSWORD` 非空；`docker compose config` 看注入值 |
 | 日志卡在 `Waiting for MySQL` 超 90 秒 | MySQL 没起来：密码含特殊字符、或数据卷是用另一套密码初始化的旧卷 | 先看 `docker compose logs mysql`；确认是旧卷且数据可弃才 `down -v` 重建（**未投产限定**），已投产改为对齐密码 |
+| 日志停在 `Pulling schema from database...` 不动 | `drizzle-kit push` 正在连库做结构内省且自身没有超时：Pod 到 MySQL 半通（SYN 被丢包）、目标实例 `information_schema` 查询极慢、或表上有元数据锁 | 先确认网络与账号（`mysql -h <host> -u horus -p -e 'SELECT 1'` 用同一地址）；急上线路径 D：`./scripts/init-sql.sh` 提前建表 + `HORUS_DB_PUSH=false`；也可调低 `HORUS_DB_STEP_TIMEOUT` 让它主动失败 |
 | `Schema sync did not create: …` | `drizzle-kit push` 在 MySQL 8.0 上失败（版本/权限） | 看同段日志的 drizzle 报错；确认库账号对 `horus` 库有全权；把 `deploy/mysql/01-schema.sql` 交 DBA 先行建表再重启（路径 C） |
 | `/api/health` 200 但业务失败 | 心跳仅检测 HTTP 进程，不检查数据库 | 确认 `DATABASE_URL` 地址可达，检查 MySQL 状态与业务日志 |
 | 登录页出现演示账号入口 | `HORUS_DEMO_MODE=true` 被打开 | 立即改回 `false` 并 `docker compose up -d`；检查演示数据是否已灌入（空库才灌），已灌入且未投产可清卷重来 |
@@ -366,6 +405,9 @@ cp .env.example .env && vi .env        # 按第 3 节改密码与 APP_URL
 | `HORUS_NEW_WINDOW_DAYS` / `NEXT_PUBLIC_NEW_WINDOW_DAYS` | `7` / `7` | 「本周新建」窗口（1–90），运行时/构建兜底，保持一致 |
 | `HORUS_PORT` | `3000` | 宿主机映射端口 |
 | `HORUS_DB_CONNECTION_LIMIT` | `10` | MySQL 连接池上限 |
+| `HORUS_DB_PUSH` | `true` | 容器启动是否执行 `drizzle-kit push`。表已由外部 SQL 建好时设 `false`（路径 D） |
+| `HORUS_DB_INIT` | `true` | 容器启动是否执行 `db:init`（负责人 + 通知设置默认行）。已执行 `02-init-owner.sql` 时可设 `false` |
+| `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT` | `90` / `180` | 等 MySQL 秒数上限 / 每个数据库步骤墙钟上限（`0` 不限），仅容器入口脚本读取 |
 | `TZ` | `Asia/Shanghai` | 容器日志时区；业务时钟代码内固定上海时区 |
 
 ...[truncated 15820 chars]

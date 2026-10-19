@@ -1,11 +1,21 @@
-# Create Secret horus-env from your external .env before applying this file.
+# Minimal Horus manifest: Deployment (1 replica) + in-cluster ClusterIP Service.
+# It does NOT create MySQL, Ingress/TLS or backups - your platform provides those.
+#
+# Before applying:
+#   1. Initialize the external MySQL once: DATABASE_URL=... ./scripts/init-sql.sh
+#      (7 tables + initial owner, no DDL rights needed afterwards)
+#   2. Put the runtime .env into a Secret named horus-env, key ".env":
+#      kubectl -n horus create secret generic horus-env --from-file=.env=/secure/horus/.env
+#      Include HORUS_DB_PUSH=false (and HORUS_DB_INIT=false) so startup skips drizzle-kit.
+#   3. Replace the image below with the tag you pushed.
+# Docs: docs/kubernetes-deployment.md
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: horus
 spec:
   replicas: 1
-  # Scheduler and startup schema synchronization require a single instance.
+  # The digest scheduler assumes a single process; do not scale out or add an HPA.
   strategy:
     type: Recreate
   selector:
@@ -29,6 +39,8 @@ spec:
             - name: http
               containerPort: 3000
           env:
+            # Runtime config comes from the mounted .env; container-level env vars
+            # listed here win over the file. HORUS_DB_PUSH/HORUS_DB_INIT belong in the file.
             - name: HORUS_ENV_FILE
               value: /etc/horus/.env
           volumeMounts:

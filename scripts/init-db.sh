@@ -5,6 +5,8 @@
 #   3) 校验 7 张表齐全，并打印负责人账号状态
 # 说明：horus 容器每次启动已自动完成 1)+2)，本脚本用于人工重跑/验收核查，
 #       或自动同步失败后修复重试。前置：docker compose 服务已启动（先执行 ./scripts/deploy.sh）。
+#       若已按部署手册第 5 节「路径 D」设了 HORUS_DB_PUSH=false（表由外部 SQL 维护），
+#       本脚本就不再适用——它会强制跑 drizzle-kit push。那种场景用 ./scripts/init-sql.sh。
 # 用法： ./scripts/init-db.sh
 set -eu
 
