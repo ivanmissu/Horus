@@ -4,6 +4,7 @@ import { requirements, teams, notificationSettings, notificationLogs } from "@/d
 import { eq } from "drizzle-orm";
 import { claimScheduledDigest } from "./digest-claim.ts";
 import { isOverdue, todayString } from "./domain";
+import { normalizePendingItems } from "./notification-settings";
 import { AppError } from "./auth";
 
 export function validateWebhook(value: string) {
@@ -71,10 +72,11 @@ async function deliver(scheduled: boolean): Promise<DigestResult> {
     const notes = [r.blocked ? `卡点：${clean(r.blockReason)}` : "", isOverdue(r) ? `高优逾期（期望 ${r.expectedDate} 上线）` : ""].filter(Boolean).join("；");
     return `- **${clean(r.title)}** · ${clean(team)}\n  ${notes} · 负责人：${clean(r.owner || "未指定")}`;
   });
-  const merged = [...new Set([...settings.pendingItems, ...items])];
+  const pendingItems = normalizePendingItems(settings.pendingItems);
+  const merged = [...new Set([...pendingItems, ...items])];
   const title = `Horus 每日异常摘要 · ${today}`;
   const appLink = settings.appUrl || process.env.APP_URL || "";
-  const markdown = `## ${title}\n\n> ${active.filter(r => r.blocked).length} 项卡点 · ${active.filter(r => isOverdue(r)).length} 项高优逾期${settings.pendingItems.length ? " · 含上次未送达摘要" : ""}\n\n${merged.length ? merged.join("\n\n") : "所有需求有序推进，暂无卡点或高优逾期。"}${appLink ? `\n\n[打开 Horus 工作台](${appLink})` : ""}`;
+  const markdown = `## ${title}\n\n> ${active.filter(r => r.blocked).length} 项卡点 · ${active.filter(r => isOverdue(r)).length} 项高优逾期${pendingItems.length ? " · 含上次未送达摘要" : ""}\n\n${merged.length ? merged.join("\n\n") : "所有需求有序推进，暂无卡点或高优逾期。"}${appLink ? `\n\n[打开 Horus 工作台](${appLink})` : ""}`;
   try {
     const url = validateWebhook(settings.webhook);
     if (settings.signingSecret) {

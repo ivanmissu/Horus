@@ -24,7 +24,7 @@ SELECT 'owner', @owner_name, @owner_username, 'owner', JSON_ARRAY(), NULL, TRUE,
 WHERE NOT EXISTS (SELECT 1 FROM `horus_members` WHERE `id` = 'owner');
 
 -- 通知设置默认行（钉钉 Webhook 等由负责人在页面「通知设置」中填写）
-INSERT IGNORE INTO `horus_notification_settings` (`id`) VALUES ('default');
+INSERT IGNORE INTO `horus_notification_settings` (`id`, `pending_items`) VALUES ('default', JSON_ARRAY());
 
 -- 执行后校验：应各返回 1 行
 SELECT `id`, `username`, `name`, `role`, `active`, (`password_hash` IS NULL) AS `password_not_set`
