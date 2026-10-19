@@ -3,7 +3,7 @@ import type { MySql2Database } from "drizzle-orm/mysql2";
 import { createPool as createMysqlPool, type Pool as MysqlPool } from "mysql2/promise";
 import { drizzle as drizzlePostgres } from "drizzle-orm/node-postgres";
 import { Pool as PostgresPool } from "pg";
-import { databaseDialect } from "./dialect.ts";
+import { databaseDialect, normalizePostgresConnectionString } from "./dialect.ts";
 import * as mysqlSchema from "./schema.mysql.ts";
 import * as postgresSchema from "./schema.postgres.ts";
 
@@ -33,8 +33,8 @@ function createPostgresConnectionPool(connectionString: string) {
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
     keepAlive: true,
-    // Supabase's pooler requires TLS. `require` keeps encryption while avoiding
-    // certificate-name checks on pooler endpoints whose host differs from the DB.
+    // Supabase's pooler requires TLS. The URL normalizer changes `require` to
+    // `no-verify` for node-postgres while keeping the transport encrypted.
     ...(sslMode && sslMode !== "disable" ? { ssl: { rejectUnauthorized: false } } : {}),
   });
 }
