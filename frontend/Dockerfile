@@ -39,9 +39,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=migrator --chown=nextjs:nodejs /opt/horus-migrate /opt/horus-migrate
-COPY --chown=nextjs:nodejs docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chown=nextjs:nodejs docker-entrypoint.sh docker-entrypoint.cjs load-env.cjs /usr/local/bin/
+# The bootstrap uses the migrator's pinned dotenv, independent of Next output tracing.
+ENV NODE_PATH=/opt/horus-migrate/node_modules
 RUN chmod 755 /usr/local/bin/docker-entrypoint.sh
 USER nextjs
 EXPOSE 3000
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["node", "/usr/local/bin/docker-entrypoint.cjs"]
 CMD ["node", "server.js"]

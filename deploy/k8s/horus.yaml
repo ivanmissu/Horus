@@ -1,0 +1,85 @@
+# Create Secret horus-env from your external .env before applying this file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: horus
+spec:
+  replicas: 1
+  # Scheduler and startup schema synchronization require a single instance.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: horus
+  template:
+    metadata:
+      labels:
+        app: horus
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+        - name: horus
+          image: horus:local # Replace with your registry image/tag.
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: HORUS_ENV_FILE
+              value: /etc/horus/.env
+          volumeMounts:
+            - name: config
+              mountPath: /etc/horus
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Process readiness only, deliberately independent of MySQL availability.
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+      volumes:
+        - name: config
+          secret:
+            secretName: horus-env
+            defaultMode: 0440
+            items:
+              - key: .env
+                path: .env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: horus
+spec:
+  selector:
+    app: horus
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

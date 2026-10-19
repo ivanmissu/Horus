@@ -340,7 +340,7 @@ cp .env.example .env && vi .env        # 按第 3 节改密码与 APP_URL
 | `horus` 一直重启，日志 `DATABASE_URL is required` | `.env` 不在仓库根目录，或 compose 没读到 | 确认在根目录执行、`MYSQL_PASSWORD` 非空；`docker compose config` 看注入值 |
 | 日志卡在 `Waiting for MySQL` 超 90 秒 | MySQL 没起来：密码含特殊字符、或数据卷是用另一套密码初始化的旧卷 | 先看 `docker compose logs mysql`；确认是旧卷且数据可弃才 `down -v` 重建（**未投产限定**），已投产改为对齐密码 |
 | `Schema sync did not create: …` | `drizzle-kit push` 在 MySQL 8.0 上失败（版本/权限） | 看同段日志的 drizzle 报错；确认库账号对 `horus` 库有全权；把 `deploy/mysql/01-schema.sql` 交 DBA 先行建表再重启（路径 C） |
-| `/api/health` 500 但页面能开 | 应用查库失败 | 确认容器内 `DATABASE_URL` 主机名是 `mysql` 不是 `127.0.0.1`；查 MySQL 健康状态 |
+| `/api/health` 200 但业务失败 | 心跳仅检测 HTTP 进程，不检查数据库 | 确认 `DATABASE_URL` 地址可达，检查 MySQL 状态与业务日志 |
 | 登录页出现演示账号入口 | `HORUS_DEMO_MODE=true` 被打开 | 立即改回 `false` 并 `docker compose up -d`；检查演示数据是否已灌入（空库才灌），已灌入且未投产可清卷重来 |
 | 端口被占用，容器起不来 | 宿主机 3000 已有进程 | 改 `.env` 的 `HORUS_PORT` 后重新 `up -d`，同步更新 `APP_URL` 端口 |
 | 09:30 没有群消息 | 容器当时不在线/未开启摘要/Webhook 未保存/容器出站不通 | 查页面「推送记录」与当天日志；确认第 8 节开关与出站；失败项次日会自动合并重发，不要手工改 `last_run_date` |
@@ -369,3 +369,4 @@ cp .env.example .env && vi .env        # 按第 3 节改密码与 APP_URL
 | `TZ` | `Asia/Shanghai` | 容器日志时区；业务时钟代码内固定上海时区 |
 
 ...[truncated 15820 chars]
+> `/api/health` 是无数据库访问的进程心跳，不代表业务或 MySQL 健康。Kubernetes 与外部 `.env` 挂载方式见 [K8s 部署说明](kubernetes-deployment.md)。
