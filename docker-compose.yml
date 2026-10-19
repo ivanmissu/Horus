@@ -53,6 +53,13 @@ services:
       HORUS_NEW_WINDOW_DAYS: ${HORUS_NEW_WINDOW_DAYS:-7}
       NEXT_PUBLIC_NEW_WINDOW_DAYS: ${NEXT_PUBLIC_NEW_WINDOW_DAYS:-7}
       HORUS_DB_CONNECTION_LIMIT: ${HORUS_DB_CONNECTION_LIMIT:-10}
+      # Container entrypoint switches (see docs/deployment-guide.md section 5, path D).
+      # Set HORUS_DB_PUSH=false / HORUS_DB_INIT=false after initializing the schema
+      # with deploy/mysql/*.sql (./scripts/init-sql.sh) so startup skips drizzle-kit.
+      HORUS_DB_PUSH: ${HORUS_DB_PUSH:-true}
+      HORUS_DB_INIT: ${HORUS_DB_INIT:-true}
+      HORUS_DB_WAIT_TIMEOUT: ${HORUS_DB_WAIT_TIMEOUT:-90}
+      HORUS_DB_STEP_TIMEOUT: ${HORUS_DB_STEP_TIMEOUT:-180}
       TZ: Asia/Shanghai
       PORT: "3000"
     ports:

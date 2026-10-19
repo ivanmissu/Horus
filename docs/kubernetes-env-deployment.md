@@ -38,8 +38,10 @@ Pod horus ──出站 443──► https://oapi.dingtalk.com（每日异常摘�
 | 场景 | 要不要跑 SQL | 说明 |
 |---|---|---|
 | **常规部署（推荐）** | **只建库 + 建账号 + 授权，不跑任何建表 SQL** | 容器每次启动自动执行：等 MySQL 就绪（最长 90 秒）→ `drizzle-kit push` 同步表结构 → 校验 7 张表齐全 → 幂等创建初始负责人和通知设置默认行。细节见第 7 节启动流程 |
-| DBA 不允许应用账号有建表/改表权限 | DBA 在**空库**上手工依次执行 `deploy/mysql/01-schema.sql`、`deploy/mysql/02-init-owner.sql`，再收紧应用账号权限 | `01-schema.sql` 是**一次性**建表脚本，重复执行会因表/索引已存在报错，**不要对已有数据的库重跑**；`02-init-owner.sql` 幂等可重跑。应用启动时仍会再跑一遍结构同步与负责人初始化，与手工结果幂等不冲突。完整步骤见附录 A |
-| 看到仓库里有 `deploy/mysql/*.sql` 就想全跑一遍 | **不要** | 那两个文件是给 DBA 评审/人工初始化用的，不是部署必经步骤。常规部署跑了也不会立刻坏（表会被重复创建而报错中断），但徒增困惑 |
+| DBA 不允许应用账号有建表/改表权限 | DBA 在**空库**上执行 `deploy/mysql/01-schema.sql`、`deploy/mysql/02-init-owner.sql`（推荐入口 `DATABASE_URL=... ./scripts/init-sql.sh`，会顺带校验），再收紧应用账号权限 | `01-schema.sql` 是**一次性**建表脚本，重复执行会因表/索引已存在报错，**不要对已有数据的库重跑**；`02-init-owner.sql` 幂等可重跑。应用启动时仍会再跑一遍结构同步与负责人初始化，与手工结果幂等不冲突。完整步骤见附录 A |
+| **Pod 连不上/不适合跑 Drizzle**（日志卡在 `Pulling schema from database...`、MySQL 5.7、RDS 白名单半通等） | 先用 `./scripts/init-sql.sh` 把表和负责人建好，再在 `.env`/ConfigMap 里设 `HORUS_DB_PUSH=false`（已跑 `02-init-owner.sql` 时可再加 `HORUS_DB_INIT=false`） | 容器启动完全不碰 drizzle-kit，但仍会校验 7 张表齐全，缺表直接启动失败；表结构变更从此由 DBA 跟进。开关见 [`kubernetes-deployment.md`](kubernetes-deployment.md) 第 8 节 |
+| 看到仓库里有 `deploy/mysql/*.sql` 就想全跑一遍 | **不要** | 那两个文件是给 DBA 评审/人工初始化用的，不是部署必经步骤。要手工初始化请用 `./scripts/init-sql.sh`（对已有表的库会主动拒绝，避免重复建表报错），跑完后按下一行走 |
+| 手工初始化之后不想让容器再跑 Drizzle | 跑完 SQL，设 `HORUS_DB_PUSH=false`（+ `HORUS_DB_INIT=false`） | 见下一行与 [`kubernetes-deployment.md`](kubernetes-deployment.md) 第 8 节。此时应用账号只需 DML 权限 |
 | 想灌演示数据 | 不要跑任何 SQL | 演示数据只在 `HORUS_DEMO_MODE=true` 时由应用自动灌入，**生产严禁开启**（会免登录、灌假团队/需求） |
 
 7 张业务表（启动后可用 `SHOW TABLES;` 核对）：
@@ -322,6 +324,9 @@ kubectl get namespace horus
 | `HORUS_INIT_OWNER_NAME` | `团队负责人` | 初始负责人姓名，1–40 字符。同上，仅首次有效 |
 | `HORUS_NEW_WINDOW_DAYS` | `7` | 「本周新建」窗口天数，范围 1–90。运行时读取，改后重启生效不用重建镜像；与构建期 `NEXT_PUBLIC_NEW_WINDOW_DAYS` 保持一致 |
 | `HORUS_DB_CONNECTION_LIMIT` | `10` | MySQL 连接池大小。单实例小团队保持 10 即可，不要盲目调大（还要看 MySQL 侧 `max_connections`） |
+| `HORUS_DB_PUSH` | `true` | `false` = 启动不跑 `drizzle-kit push`（表已由外部 SQL 建好时）。仍会校验 7 张表，缺表启动失败 |
+| `HORUS_DB_INIT` | `true` | `false` = 启动不跑 `db:init`（负责人 + 通知设置默认行）。仅当 `02-init-owner.sql` 已执行时设置 |
+| `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT` | `90` / `180` | 等 MySQL 秒数上限 / 单个数据库步骤墙钟上限（`0` 不限）。后者防止 Pod 连不上 MySQL 时启动无限期挂住 |
 | `TZ` | `Asia/Shanghai` | 镜像已内置此默认值，清单里显式写出只是为了醒目；可删 |
 
 #### 构建期（只在第 2 节 `docker build` 时用，不要塞进运行时 env 指望它生效）
@@ -551,6 +556,7 @@ kubectl -n horus logs deployment/horus --tail=200
 正常日志应依次出现（顺序即启动流程）：
 
 ```text
+Database bootstrap: push=true init=true wait_timeout=90s step_timeout=180s
 Waiting for MySQL...
 MySQL is ready
 Synchronizing MySQL schema...
@@ -559,6 +565,8 @@ Created initial owner account 'admin'. Set its password on first login.
 Horus production data initialization complete.
 Starting Horus...
 ```
+
+外部 SQL 已建好表并设了 `HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false` 时，中间三行会换成 `Skipping schema synchronization (HORUS_DB_PUSH=false); verifying tables only...`、`MySQL schema ready (7 tables)`、`Skipping owner initialization (HORUS_DB_INIT=false).`——**`MySQL schema ready (7 tables)` 仍然必须出现**，那是建表完成的唯一凭据。
 
 第二次以后启动（负责人已存在）倒数第二行会变成 `Keeping existing owner account 'admin' (idempotent initialization)`，这是幂等生效的标志，不是报错。
 
@@ -569,8 +577,8 @@ Starting Horus...
 1. **加载配置**：未设 `HORUS_ENV_FILE` 且 `/app/.env` 不存在 → 直接用容器环境变量；已通过 `env`/`envFrom` 显式注入的值优先级最高。
 2. **校验 `DATABASE_URL`**：为空立即退出（`DATABASE_URL is required`）。
 3. **等 MySQL**：每 2 秒试连一次（`SELECT 1`），**最长 90 秒**，超时打印最后一次错误并退出，Pod 会 CrashLoopBackOff 重试。日志长期停在 `Waiting for MySQL...` 就是卡这里——查地址/防火墙/账号，别查应用。
-4. **同步表结构并校验**：`drizzle-kit push` 后显式查 `information_schema` 确认 7 张表齐全，缺表即退出。所以「日志有 `MySQL schema ready (7 tables)`」= 建表真的完成了。
-5. **初始化数据**（`frontend/src/db/init-prod.ts`，幂等）：无负责人时按 `HORUS_INIT_OWNER_USERNAME/NAME` 创建 `id=owner` 的负责人（密码为空，首次登录设置）；始终确保通知设置 `id=default` 默认行存在。**不灌任何业务/演示数据**。
+4. **同步表结构并校验**：`drizzle-kit push` 后显式查 `information_schema` 确认 7 张表齐全，缺表即退出。所以「日志有 `MySQL schema ready (7 tables)`」= 建表真的完成了。该步骤带 `HORUS_DB_STEP_TIMEOUT`（默认 180 秒）墙钟保护，卡住会明确失败而不是无限等；表已在外部建好时用 `HORUS_DB_PUSH=false` 跳过 push、只留校验。
+5. **初始化数据**（`frontend/src/db/init-prod.ts`，幂等）：无负责人时按 `HORUS_INIT_OWNER_USERNAME/NAME` 创建 `id=owner` 的负责人（密码为空，首次登录设置）；始终确保通知设置 `id=default` 默认行存在。**不灌任何业务/演示数据**。已用 `02-init-owner.sql` 建过时可用 `HORUS_DB_INIT=false` 跳过。
 
 之后才 `Starting Horus...` 并监听 `0.0.0.0:3000`。因此 readiness 通过 ≈ 初始化全部完成，可以放心接流量。
 
@@ -874,9 +882,12 @@ kubectl -n horus port-forward service/horus 3000:3000   # 另开终端 curl http
 # 1) 先看两个脚本头部注释，按需改 02 里的 @owner_username / @owner_name
 #    并与 ConfigMap 的 HORUS_INIT_OWNER_* 保持一致
 # 2) 依次执行建表与初始数据（以能连库的客户端为例）
-mysql -h <mysql-host> -u horus -p horus < deploy/mysql/01-schema.sql
-mysql -h <mysql-host> -u horus -p horus < deploy/mysql/02-init-owner.sql
-# 3) 之后照常按第 6 节部署；启动时的结构同步与 db:init 幂等，不会与手工结果冲突
+DATABASE_URL='mysql://horus:<密码>@<mysql-host>:3306/horus' ./scripts/init-sql.sh
+#    （等价的手工命令：分别把两个文件重定向进 mysql）
+# mysql -h <mysql-host> -u horus -p horus horus < deploy/mysql/01-schema.sql
+# mysql -h <mysql-host> -u horus -p horus horus < deploy/mysql/02-init-owner.sql
+# 3) 之后照常按第 6 节部署：启动时的结构同步与 db:init 幂等，不会与手工结果冲突；
+#    想让容器完全不碰 Drizzle，再在 ConfigMap 里加 HORUS_DB_PUSH=false（+ HORUS_DB_INIT=false）
 ```
 
 校验（两个查询应各返回 1 行，负责人的 `password_not_set` 为 1）：
