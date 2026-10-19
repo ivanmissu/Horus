@@ -77,6 +77,10 @@ npm run lint          # ESLint
 npm run build         # 生产构建
 ```
 
+## 生产环境部署（Kubernetes）
+
+参见 [K8s 部署说明](docs/kubernetes-deployment.md) 与 [`deploy/k8s/horus.yaml`](deploy/k8s/horus.yaml)：单副本、外部 MySQL、Secret 只读挂载 `.env`，以及不访问数据库的 `/api/health` 探针。心跳仅表示进程存活，不代表数据库健康。
+
 ## 生产环境部署（Docker Compose · 内网单机）
 
 完整步骤见 [`docs/deployment-guide.md`](docs/deployment-guide.md)。下面是速览。

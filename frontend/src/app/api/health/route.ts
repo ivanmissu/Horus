@@ -1,15 +1,8 @@
-import { db } from "@/db";
-import { sql } from "drizzle-orm";
-import { isPreviewMode } from "@/lib/preview";
-
+// Process heartbeat only: do not import database, session or business modules here.
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (isPreviewMode()) return Response.json({ ok: true, mode: "read-only-preview" });
-  try {
-    await db.execute(sql`select 1`);
-    return Response.json({ ok: true });
-  } catch {
-    return Response.json({ ok: false }, { status: 500 });
-  }
+  return Response.json({ ok: true }, {
+    headers: { "Cache-Control": "no-store" },
+  });
 }
