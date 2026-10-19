@@ -76,6 +76,15 @@ export async function POST(request: NextRequest) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    if (!(error instanceof AppError)) {
+      const value = error && typeof error === "object" ? error as { name?: unknown; code?: unknown; cause?: unknown } : {};
+      const cause = value.cause && typeof value.cause === "object" ? value.cause as { code?: unknown } : undefined;
+      const code = typeof value.code === "string" ? value.code : typeof cause?.code === "string" ? cause.code : "UNKNOWN";
+      console.error("Horus login request failed", {
+        name: error instanceof Error ? error.name : "UnknownError",
+        code: /^[A-Za-z0-9_-]{1,32}$/.test(code) ? code : "UNKNOWN",
+      });
+    }
     const databaseMissing = !process.env.DATABASE_URL;
     const message = error instanceof AppError
       ? error.message
