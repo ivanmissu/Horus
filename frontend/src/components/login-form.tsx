@@ -32,7 +32,10 @@ export function LoginForm({ demoAllowed, previewOnly = false, embeddedPreview = 
         credentials: "include", cache: "no-store",
         headers: embeddedPreview ? embeddedAuthHeaders() : {},
       });
-      if (!workspace.ok) throw new Error("密码已验证，但登录会话未生效，请重试。");
+      if (!workspace.ok) {
+        if (workspace.status === 401) throw new Error("密码已验证，但登录会话未生效，请重试。");
+        throw new Error("登录已完成，但工作台加载失败，请联系管理员检查服务日志和数据库初始化。");
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : "暂时无法连接，请稍后重试");
       return;

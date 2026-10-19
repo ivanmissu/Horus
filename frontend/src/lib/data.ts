@@ -5,6 +5,8 @@ import { getActor, publicMember } from "./auth";
 import { newWindowDays } from "./domain";
 import { isPreviewMode } from "./preview";
 import { previewWorkspace } from "./preview-data";
+import { normalizePendingItems } from "./notification-settings";
+import { AppError } from "./auth";
 import type { WorkspaceData } from "./types";
 
 export async function loadWorkspace(): Promise<WorkspaceData> {
@@ -17,10 +19,11 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
     db.select().from(notificationSettings).limit(1),
     actor.role === "owner" ? db.select().from(notificationLogs).orderBy(desc(notificationLogs.createdAt)).limit(20) : Promise.resolve([]),
   ]);
+  if (!settings) throw new AppError("通知设置尚未初始化，请联系管理员执行数据库初始化", 503);
   const { webhook, signingSecret, pendingItems, ...safeSettings } = settings;
   return {
     teams: allTeams, members: allMembers.map(publicMember), requirements: allRequirements,
-    settings: { ...safeSettings, hasWebhook: !!webhook, hasSigningSecret: !!signingSecret, pendingCount: pendingItems.length },
+    settings: { ...safeSettings, hasWebhook: !!webhook, hasSigningSecret: !!signingSecret, pendingCount: normalizePendingItems(pendingItems).length },
     logs, actor, demo, embeddedAuth: process.env.HORUS_EMBEDDED_PREVIEW === "true", now: new Date().toISOString(), newWindowDays: newWindowDays(),
   };
 }

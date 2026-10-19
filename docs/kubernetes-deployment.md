@@ -147,3 +147,26 @@ kubectl -n horus rollout status deployment/horus --timeout=180s
 | 手工建表，负责人仍由容器建 | `HORUS_DB_PUSH=false`（`02-init-owner.sql` 不要跑） |
 
 纯环境变量版（不挂 `.env`，Secret + ConfigMap + `envFrom`）见 [`kubernetes-env-deployment.md`](kubernetes-env-deployment.md)；Compose / 单机与备份回滚见 [`deployment-guide.md`](deployment-guide.md)。
+
+## 登录成功后提示「会话未生效」，日志出现 `null (reading 'length')`
+
+该提示不一定是 Cookie 问题：旧版登录页在 `/api/workspace` 返回任意错误时都会这样提示。
+如果密码接口 `/api/auth` 成功、工作台接口 `/api/workspace` 返回 500，优先检查通知设置：
+
+```sql
+SELECT id, pending_items, JSON_TYPE(pending_items) AS pending_items_type
+FROM horus_notification_settings WHERE id = 'default';
+```
+
+旧版手工初始化脚本没有显式写入 `pending_items`。ORM 的 `$defaultFn` 不是 MySQL
+表默认值；依数据库版本、SQL 模式或历史数据，可能插入失败或留下空值。
+SQL NULL / JSON null 会使旧版工作台的 `pendingItems.length` 抛错，钉钉摘要也可能受影响。
+
+在 **Horus 实际连接的数据库** 中执行 `deploy/mysql/03-repair-notification-settings.sql`。
+该脚本可重复执行，补齐缺失的默认设置行，把 SQL NULL / JSON null 改成 `[]`，
+不覆盖密码、Webhook、其他通知配置或已有的非空待重试摘要。执行后直接重新登录即可，
+无需删除 PVC、重建数据库或重置密码。如果查询结果本来就是数组，请继续检查完整服务端堆栈，
+不要把所有 `null.length` 都视为此问题。
+
+升级到包含此修复的镜像后，工作台和摘要读取会兼容空值；初始化 SQL 也会显式写入空数组。
+新版登录页仅在工作台返回 401 时提示会话失效，其他错误提示工作台加载失败。
