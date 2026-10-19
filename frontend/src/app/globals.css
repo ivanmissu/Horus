@@ -51,3 +51,119 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 
 .drawer-status-note{display:inline-flex;align-items:center;gap:5px;margin-right:auto;font-size:10px;color:#9db195}
 .archive-requirement{margin-left:auto}
+/* ——— Unified Select / Date / Time ———
+   Matches Horus card & form tokens: border #e1e7f0 → focus #ad9ce6 + #7761d810, text #667085, placeholder #a7b2c2, shadow 0 12px 40px #28213c16, radius 6/9px
+*/
+.ui-select-trigger,.ui-date-trigger,.ui-time-trigger{
+  display:inline-flex;align-items:center;justify-content:space-between;gap:8px;
+  width:100%;height:38px;min-height:38px;
+  padding:0 10px 0 11px;
+  border:1px solid #e1e7f0;border-radius:6px;
+  background:#fff;color:#667085;font-size:12px;line-height:1.5;
+  transition:border-color .15s,box-shadow .15s,background .15s,color .15s;
+  white-space:nowrap;user-select:none;
+}
+.ui-select-trigger:hover,.ui-date-trigger:hover,.ui-time-trigger:hover{border-color:#d9c7eb;background:#fdfaff}
+.ui-select-trigger:focus-visible,.ui-date-trigger:focus-visible,.ui-time-trigger:focus-visible,
+.ui-select-trigger.is-open,.ui-date-trigger.is-open,.ui-time-trigger.is-open{outline:none;border-color:#ad9ce6!important;box-shadow:0 0 0 3px #7761d810}
+.ui-select-trigger.is-disabled,.ui-date-trigger.is-disabled,.ui-time-trigger.is-disabled{background:#faf8fc;color:#b6aabd;cursor:not-allowed;opacity:1}
+.ui-select-trigger.variant-small,.ui-date-trigger.variant-small,.ui-time-trigger.variant-small{height:31px;min-height:31px;font-size:11.5px;padding:0 9px 0 10px;border-radius:6px}
+.ui-select-trigger.variant-quiet,.ui-date-trigger.variant-quiet,.ui-time-trigger.variant-quiet{
+  width:auto;height:auto;min-height:0;
+  padding:6px 18px 6px 5px;
+  border-color:transparent !important;background:transparent !important;
+  color:#8d91a3;font-size:11.5px;box-shadow:none !important;
+}
+.ui-select-trigger.variant-quiet:hover,.ui-date-trigger.variant-quiet:hover,.ui-time-trigger.variant-quiet:hover{background:#f6f4fb !important;color:#7360bf;border-color:transparent !important}
+.ui-select-trigger.variant-quiet.is-open,.ui-date-trigger.variant-quiet.is-open,.ui-time-trigger.variant-quiet.is-open{background:#eeebf9 !important;color:#7a62cf}
+.ui-select-value,.ui-date-value,.ui-time-value{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.ui-select-value.is-placeholder,.ui-date-value.is-placeholder,.ui-time-value.is-placeholder{color:#a7b2c2}
+.ui-select-chevron{flex-shrink:0;color:#a49eba;transition:transform .15s,color .15s;display:inline-flex}
+.ui-select-trigger.is-open .ui-select-chevron,.ui-date-trigger.is-open .ui-select-chevron,.ui-time-trigger.is-open .ui-select-chevron{transform:rotate(180deg);color:#9a83d3}
+.ui-date-icon,.ui-time-icon{flex-shrink:0;color:#a49eba}
+.ui-date-actions,.ui-time-actions{display:inline-flex;align-items:center;gap:6px;flex-shrink:0}
+.ui-clear{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:#a49eba;transition:background .15s,color .15s}
+.ui-clear:hover{background:#f3eef9;color:#7a62cf}
+.ui-select-panel,.ui-date-panel,.ui-time-panel{
+  background:#fff;border:1px solid #e7e9f0;border-radius:9px;box-shadow:0 12px 40px #28213c16;
+  overflow:hidden;animation:fade-in .15s ease-out;
+}
+.ui-select-panel-inner{max-height:280px;overflow:auto;padding:6px}
+.ui-select-panel::-webkit-scrollbar,.ui-select-panel-inner::-webkit-scrollbar,.ui-time-list::-webkit-scrollbar{width:6px;height:6px}
+.ui-select-option{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  width:100%;min-height:34px;padding:8px 10px;
+  border:0;border-radius:7px;background:transparent;color:#667085;font-size:12px;line-height:1.5;text-align:left;
+}
+.ui-select-option:hover,.ui-select-option.is-highlighted{background:#faf8ff;color:#594f6b}
+.ui-select-option.is-selected{background:#f0ebfb;color:#795ed0;font-weight:500}
+.ui-select-option:disabled{opacity:.45;cursor:not-allowed}
+.ui-select-check{flex-shrink:0;color:#795ed0}
+.ui-select-empty{padding:18px 12px;text-align:center;font-size:11px;color:#9ba8ba}
+.ui-select-panel.variant-quiet{width:auto;min-width:172px}
+.ui-select-panel.variant-quiet .ui-select-option{font-size:11.5px;min-height:32px}
+.ui-select-panel.variant-small .ui-select-option{font-size:11.5px}
+
+/* Date panel */
+.ui-date-panel{padding:10px 10px 0}
+.ui-date-header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 2px 10px}
+.ui-date-title{font-size:13px;font-weight:600;color:#404756;letter-spacing:-.2px}
+.ui-date-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:6px 2px;color:#9ba8ba;font-size:10px;text-align:center}
+.ui-date-weekdays span{height:18px;display:flex;align-items:center;justify-content:center}
+.ui-date-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:2px}
+.ui-date-cell{
+  height:36px;border:0;border-radius:8px;background:transparent;color:#667085;font-size:12.5px;
+  display:flex;align-items:center;justify-content:center;transition:background .12s,color .12s,box-shadow .12s;
+}
+.ui-date-cell:hover{background:#f6f0fb;color:#594f6b}
+.ui-date-cell.is-muted{color:#b8c0d1}
+.ui-date-cell.is-today{box-shadow:inset 0 0 0 1.5px #d9c7eb;color:#795ed0;font-weight:600;background:#fefcff}
+.ui-date-cell.is-selected{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 2px 8px #7761d826}
+.ui-date-cell.is-selected:hover{background:var(--primary-dark);color:#fff}
+.ui-date-footer{display:flex;align-items:center;gap:8px;padding:12px 2px;border-top:1px solid #f0f1f6;margin-top:10px}
+.ui-date-footer-spacer{flex:1}
+.ui-date-panel.variant-small{width:286px}
+.ui-date-panel.variant-quiet{width:280px}
+
+/* Time panel */
+.ui-time-panel{padding:0;overflow:hidden}
+.ui-time-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 14px 10px;border-bottom:1px solid #f0f1f6}
+.ui-time-title{font-size:12.5px;font-weight:600;color:#404756}
+.ui-time-hint{font-size:10px;color:#9ba8ba}
+.ui-time-body{display:flex;align-items:stretch;gap:0;height:220px}
+.ui-time-col{flex:1;min-width:0;display:flex;flex-direction:column}
+.ui-time-col-head{height:32px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #f6f0f8;background:#fcfbff;color:#8d91a3;font-size:11px;font-weight:500}
+.ui-time-list{flex:1;overflow:auto;padding:4px}
+.ui-time-option{
+  width:100%;height:32px;display:flex;align-items:center;justify-content:center;
+  border:0;border-radius:7px;background:transparent;color:#667085;font-size:12.5px;font-variant-numeric:tabular-nums;
+}
+.ui-time-option:hover{background:#faf8ff;color:#594f6b}
+.ui-time-option.is-selected{background:#f0ebfb;color:#795ed0;font-weight:600}
+.ui-time-divider{width:1px;background:#f0f1f6;flex-shrink:0}
+.ui-time-footer{display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid #f0f1f6;background:#fdfcff}
+.ui-time-footer-spacer{flex:1}
+
+/* Form-field integration: ensure Select/Date/Time fill available width like native inputs */
+.form-field .ui-select-trigger,.form-field .ui-date-trigger,.form-field .ui-time-trigger{width:100%}
+.list-filterbar .ui-select-trigger,.filter-panel .ui-select-trigger,.inline-action-box .ui-select-trigger{max-width:170px}
+.list-filterbar .ui-select-trigger.variant-small{max-width:155px}
+.template-team-select .ui-select-trigger{max-width:220px}
+.migration-row .ui-select-trigger{flex:1;max-width:none}
+.time-input-row .ui-time-trigger{width:130px}
+.notification-form-body .time-input-row .ui-time-trigger{width:140px}
+
+/* Quiet variant in focus toolbar retains small footprint */
+.focus-filter-actions .ui-select-trigger.variant-quiet{max-width:135px}
+
+/* Responsive: mobile compact heights */
+@media(max-width:768px){
+  .ui-select-trigger,.ui-date-trigger,.ui-time-trigger{height:36px;min-height:36px;font-size:11.5px}
+  .ui-select-trigger.variant-small,.ui-date-trigger.variant-small,.ui-time-trigger.variant-small{height:30px;min-height:30px;font-size:10.5px}
+  .ui-date-panel{width:292px !important;left:50% !important;transform:translateX(-50%);right:auto}
+  .ui-time-panel{width:260px !important}
+  .list-filterbar .ui-select-trigger,.filter-panel .ui-select-trigger{max-width:140px}
+}
+@media(max-width:380px){
+  .ui-date-panel{width:278px !important}
+}

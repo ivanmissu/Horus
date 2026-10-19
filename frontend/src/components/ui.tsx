@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useRef, type ReactNode } from "react";
-import { Code2, Layers3, ChartNoAxesCombined, Server, X, Inbox, LoaderCircle } from "lucide-react";
+import { useEffect, useRef, useState, useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Code2, Layers3, ChartNoAxesCombined, Server, X, Inbox, LoaderCircle, ChevronDown, CalendarDays, Clock3, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import type { Team } from "@/lib/types";
 
 export function HorusLogo({ compact = false }: { compact?: boolean }) {
@@ -44,4 +45,566 @@ export function Modal({ title, description, children, onClose, footer, wide = fa
     return () => { clearTimeout(timer); document.body.style.overflow = oldOverflow; document.removeEventListener("keydown", onKey); previous?.focus(); };
   }, []);
   return <div className={`modal-backdrop ${drawer ? "drawer-backdrop" : ""}`} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><div ref={panel} className={`modal-panel ${wide ? "wide" : ""} ${drawer ? "drawer" : ""}`} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title}><header className="modal-header"><div>{eyebrow && <div className="modal-eyebrow">{eyebrow}</div>}<h2>{title}</h2>{description && <p>{description}</p>}</div><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={20} /></button></header><div className="modal-body">{children}</div>{footer && <footer className="modal-footer">{footer}</footer>}</div></div>;
+}
+
+// ---------- Unified form controls: Select / DatePicker / TimePicker ----------
+
+export type SelectOption = { value: string; label: string; disabled?: boolean };
+
+function useMounted() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  return mounted;
+}
+
+function useOnClickOutside(refs: React.RefObject<HTMLElement | null>[], handler: () => void, enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+    const listener = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      for (const r of refs) {
+        const el = r.current;
+        if (el && el.contains(target)) return;
+      }
+      // also ignore clicks inside any portal panel (they are children of body, not refs)
+      // panels have data-ui-portal attribute
+      const portal = (target as HTMLElement).closest?.("[data-ui-portal]");
+      if (portal) return;
+      handler();
+    };
+    document.addEventListener("mousedown", listener);
+    document.addEventListener("touchstart", listener);
+    return () => {
+      document.removeEventListener("mousedown", listener);
+      document.removeEventListener("touchstart", listener);
+    };
+  }, [refs, handler, enabled]);
+}
+
+export function Select({
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled = false,
+  id,
+  ariaLabel,
+  variant = "default",
+  className = "",
+  style,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectOption[];
+  placeholder?: string;
+  disabled?: boolean;
+  id?: string;
+  ariaLabel?: string;
+  variant?: "default" | "quiet" | "small";
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState<number>(() => {
+    const idx = options.findIndex(o => o.value === value);
+    return idx >= 0 ? idx : 0;
+  });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const mounted = useMounted();
+  const listId = useId();
+  const selected = options.find(o => o.value === value) || null;
+
+  useEffect(() => { if (open) { const idx = options.findIndex(o => o.value === value); setHighlight(idx >= 0 ? idx : 0); } }, [open, value, options]);
+
+  useOnClickOutside([triggerRef, panelRef], () => setOpen(false), open);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); triggerRef.current?.focus(); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); setHighlight(h => Math.min(options.length - 1, h + 1)); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); setHighlight(h => Math.max(0, h - 1)); }
+      else if (e.key === "Enter") { e.preventDefault(); const opt = options[highlight]; if (opt && !opt.disabled) { onChange(opt.value); setOpen(false); } }
+      else if (e.key === "Home") { e.preventDefault(); setHighlight(0); }
+      else if (e.key === "End") { e.preventDefault(); setHighlight(options.length - 1); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, highlight, options, onChange]);
+
+  // scroll highlighted into view
+  useEffect(() => {
+    if (!open || !panelRef.current) return;
+    const el = panelRef.current.querySelector<HTMLElement>(`[data-index="${highlight}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlight, open]);
+
+  const panel = open && mounted && triggerRef.current ? (() => {
+    const rect = triggerRef.current!.getBoundingClientRect();
+    const gap = 7;
+    const maxH = 280;
+    const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
+    const spaceBelow = viewportH - rect.bottom - gap - 12;
+    const spaceAbove = rect.top - gap - 12;
+    // decide placement
+    let top = rect.bottom + gap;
+    let maxHeight = Math.min(maxH, Math.max(160, spaceBelow));
+    let place: "bottom" | "top" = "bottom";
+    if (spaceBelow < 180 && spaceAbove > spaceBelow) {
+      place = "top";
+      maxHeight = Math.min(maxH, Math.max(160, spaceAbove));
+      top = rect.top - gap - maxHeight;
+      // fallback to fixed height calc: we will position panel and let CSS handle max-height
+      // instead compute actual panel height approx
+      // simpler: set top = rect.top - 8 and use bottom placement flipped via CSS
+      // but we already have logic, just set top to rect.top - gap - maxHeight
+      // if space small we still render below with scroll
+    }
+    const width = Math.max(rect.width, 172);
+    // ensure we don't overflow right
+    let left = rect.left;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+    if (left + width > vw - 12) left = Math.max(12, vw - width - 12);
+
+    return createPortal(
+      <div
+        ref={panelRef}
+        data-ui-portal="select"
+        role="listbox"
+        id={listId}
+        aria-label={ariaLabel}
+        className={`ui-select-panel variant-${variant}`}
+        style={{ position: "fixed", left, top, width, maxHeight, zIndex: 1300 }}
+        data-placement={place}
+      >
+        <div className="ui-select-panel-inner">
+          {options.length === 0 ? (
+            <div className="ui-select-empty">暂无选项</div>
+          ) : options.map((opt, i) => {
+            const isSelected = opt.value === value;
+            const isHighlighted = i === highlight;
+            return (
+              <button
+                key={opt.value || `idx-${i}`}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                data-index={i}
+                data-highlighted={isHighlighted ? "true" : "false"}
+                data-selected={isSelected ? "true" : "false"}
+                disabled={!!opt.disabled}
+                className={`ui-select-option ${isSelected ? "is-selected" : ""} ${isHighlighted ? "is-highlighted" : ""}`}
+                onMouseEnter={() => setHighlight(i)}
+                onClick={() => {
+                  if (opt.disabled) return;
+                  onChange(opt.value);
+                  setOpen(false);
+                  triggerRef.current?.focus();
+                }}
+              >
+                <span className="ui-select-option-label">{opt.label}</span>
+                {isSelected && <Check size={14} className="ui-select-check" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>,
+      document.body
+    );
+  })() : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-label={ariaLabel}
+        disabled={disabled}
+        data-open={open ? "true" : "false"}
+        data-variant={variant}
+        className={`ui-select-trigger variant-${variant} ${className} ${disabled ? "is-disabled" : ""} ${open ? "is-open" : ""}`}
+        style={style}
+        onClick={() => { if (!disabled) setOpen(v => !v); }}
+      >
+        <span className={`ui-select-value ${!selected ? "is-placeholder" : ""}`}>{selected ? selected.label : (placeholder || "请选择")}</span>
+        <span className={`ui-select-chevron ${open ? "is-open" : ""}`} aria-hidden="true"><ChevronDown size={14} strokeWidth={1.9} /></span>
+      </button>
+      {panel}
+    </>
+  );
+}
+
+// ---- Date helpers ----
+function parseISODate(s: string): Date | null {
+  if (!s) return null;
+  // expect YYYY-MM-DD
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (isNaN(d.getTime())) return null;
+  // guard against overflow like 2025-02-31
+  if (d.getFullYear() !== Number(m[1]) || d.getMonth() !== Number(m[2]) - 1 || d.getDate() !== Number(m[3])) return null;
+  return d;
+}
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function startOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function addMonths(d: Date, delta: number) { return new Date(d.getFullYear(), d.getMonth() + delta, 1); }
+function isSameDay(a: Date | null, b: Date | null) {
+  if (!a || !b) return false;
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+export function DatePicker({
+  value,
+  onChange,
+  id,
+  placeholder = "选择日期",
+  disabled = false,
+  ariaLabel,
+  className = "",
+  style,
+  variant = "default",
+}: {
+  value: string; // YYYY-MM-DD or ""
+  onChange: (value: string) => void;
+  id?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  ariaLabel?: string;
+  className?: string;
+  style?: React.CSSProperties;
+  variant?: "default" | "small" | "quiet";
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const mounted = useMounted();
+  const selectedDate = parseISODate(value);
+  const [view, setView] = useState<Date>(() => selectedDate || new Date());
+
+  useEffect(() => {
+    if (open) {
+      const sd = parseISODate(value);
+      setView(sd || new Date());
+    }
+  }, [open, value]);
+
+  useOnClickOutside([triggerRef, panelRef], () => setOpen(false), open);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const today = new Date();
+  // build calendar cells
+  const first = startOfMonth(view);
+  const startWeekday = (first.getDay() + 6) % 7; // Mon=0
+  const daysInMonth = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
+  const daysInPrev = new Date(view.getFullYear(), view.getMonth(), 0).getDate();
+  const cells: { date: Date; isCurrent: boolean; isToday: boolean; isSelected: boolean; isMuted: boolean }[] = [];
+  for (let i = startWeekday - 1; i >= 0; i--) {
+    const d = new Date(view.getFullYear(), view.getMonth() - 1, daysInPrev - i);
+    cells.push({ date: d, isCurrent: false, isToday: isSameDay(d, today), isSelected: isSameDay(d, selectedDate), isMuted: true });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(view.getFullYear(), view.getMonth(), d);
+    cells.push({ date, isCurrent: true, isToday: isSameDay(date, today), isSelected: isSameDay(date, selectedDate), isMuted: false });
+  }
+  const remaining = 42 - cells.length;
+  for (let d = 1; d <= remaining; d++) {
+    const date = new Date(view.getFullYear(), view.getMonth() + 1, d);
+    cells.push({ date, isCurrent: false, isToday: isSameDay(date, today), isSelected: isSameDay(date, selectedDate), isMuted: true });
+  }
+
+  const display = value ? value.replaceAll("-", ".") : "";
+  const hasValue = !!value;
+
+  const panel = open && mounted && triggerRef.current ? (() => {
+    const rect = triggerRef.current!.getBoundingClientRect();
+    const gap = 7;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    const panelW = 304;
+    const panelH = 360;
+    let left = rect.left;
+    if (left + panelW > vw - 12) left = Math.max(12, vw - panelW - 12);
+    let top = rect.bottom + gap;
+    if (top + panelH > vh - 12) {
+      // try above
+      const above = rect.top - gap - panelH;
+      if (above >= 12) top = above;
+      else top = Math.max(12, vh - panelH - 12);
+    }
+    return createPortal(
+      <div
+        ref={panelRef}
+        data-ui-portal="date"
+        role="dialog"
+        aria-label={ariaLabel || "选择日期"}
+        className={`ui-date-panel variant-${variant}`}
+        style={{ position: "fixed", left, top, width: panelW, zIndex: 1300 }}
+      >
+        <div className="ui-date-header">
+          <button type="button" className="icon-button tiny" aria-label="上个月" onClick={() => setView(v => addMonths(v, -1))}><ChevronLeft size={16} /></button>
+          <span className="ui-date-title">{view.getFullYear()}年 {String(view.getMonth() + 1).padStart(2, "0")}月</span>
+          <button type="button" className="icon-button tiny" aria-label="下个月" onClick={() => setView(v => addMonths(v, 1))}><ChevronRight size={16} /></button>
+        </div>
+        <div className="ui-date-weekdays">
+          {["一", "二", "三", "四", "五", "六", "日"].map(d => <span key={d}>{d}</span>)}
+        </div>
+        <div className="ui-date-grid">
+          {cells.map((c, idx) => (
+            <button
+              key={idx}
+              type="button"
+              className={`ui-date-cell ${c.isMuted ? "is-muted" : ""} ${c.isToday ? "is-today" : ""} ${c.isSelected ? "is-selected" : ""}`}
+              aria-label={toISODate(c.date)}
+              aria-selected={c.isSelected}
+              onClick={() => {
+                onChange(toISODate(c.date));
+                setOpen(false);
+                triggerRef.current?.focus();
+              }}
+            >
+              {c.date.getDate()}
+            </button>
+          ))}
+        </div>
+        <div className="ui-date-footer">
+          <button type="button" className="text-button" onClick={() => { const t = new Date(); onChange(toISODate(t)); setView(t); setOpen(false); }}>今天</button>
+          <span className="ui-date-footer-spacer" />
+          {hasValue && <button type="button" className="button small" onClick={() => { onChange(""); setOpen(false); }}>清空</button>}
+          <button type="button" className="button primary small" onClick={() => setOpen(false)}>确定</button>
+        </div>
+      </div>,
+      document.body
+    );
+  })() : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        disabled={disabled}
+        data-open={open ? "true" : "false"}
+        className={`ui-date-trigger variant-${variant} ${className} ${disabled ? "is-disabled" : ""} ${open ? "is-open" : ""} ${hasValue ? "has-value" : ""}`}
+        style={style}
+        onClick={() => { if (!disabled) setOpen(v => !v); }}
+      >
+        <CalendarDays size={15} className="ui-date-icon" />
+        <span className={`ui-date-value ${!hasValue ? "is-placeholder" : ""}`}>{hasValue ? display : placeholder}</span>
+        <span className="ui-date-actions">
+          {hasValue && !disabled && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="清空日期"
+              className="ui-clear"
+              onClick={e => { e.stopPropagation(); onChange(""); }}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onChange(""); } }}
+            >
+              <X size={13} />
+            </span>
+          )}
+          <span className={`ui-select-chevron ${open ? "is-open" : ""}`}><ChevronDown size={14} strokeWidth={1.9} /></span>
+        </span>
+      </button>
+      {panel}
+    </>
+  );
+}
+
+// ---- TimePicker ----
+function parseTime(s: string): { h: number; m: number } | null {
+  if (!s) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (!m) return null;
+  const h = Number(m[1]); const mm = Number(m[2]);
+  if (h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+  return { h, m: mm };
+}
+function toTime(h: number, m: number) { return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`; }
+
+export function TimePicker({
+  value,
+  onChange,
+  id,
+  placeholder = "选择时间",
+  disabled = false,
+  ariaLabel,
+  className = "",
+  style,
+  variant = "default",
+}: {
+  value: string; // HH:MM
+  onChange: (value: string) => void;
+  id?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  ariaLabel?: string;
+  className?: string;
+  style?: React.CSSProperties;
+  variant?: "default" | "small" | "quiet";
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const mounted = useMounted();
+  const parsed = parseTime(value);
+
+  useOnClickOutside([triggerRef, panelRef], () => setOpen(false), open);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = Array.from({ length: 60 }, (_, i) => i);
+
+  const hasValue = !!parsed;
+
+  const panel = open && mounted && triggerRef.current ? (() => {
+    const rect = triggerRef.current!.getBoundingClientRect();
+    const gap = 7;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    const panelW = 264;
+    const panelH = 316;
+    let left = rect.left;
+    if (left + panelW > vw - 12) left = Math.max(12, vw - panelW - 12);
+    let top = rect.bottom + gap;
+    if (top + panelH > vh - 12) {
+      const above = rect.top - gap - panelH;
+      if (above >= 12) top = above;
+      else top = Math.max(12, vh - panelH - 12);
+    }
+    return createPortal(
+      <div
+        ref={panelRef}
+        data-ui-portal="time"
+        role="dialog"
+        aria-label={ariaLabel || "选择时间"}
+        className={`ui-time-panel variant-${variant}`}
+        style={{ position: "fixed", left, top, width: panelW, zIndex: 1300 }}
+      >
+        <div className="ui-time-header">
+          <span className="ui-time-title">选择时间</span>
+          <span className="ui-time-hint">24 小时制 · 北京时间</span>
+        </div>
+        <div className="ui-time-body">
+          <div className="ui-time-col">
+            <div className="ui-time-col-head">时</div>
+            <div className="ui-time-list">
+              {hours.map(h => {
+                const sel = parsed?.h === h;
+                return (
+                  <button
+                    key={h}
+                    type="button"
+                    className={`ui-time-option ${sel ? "is-selected" : ""}`}
+                    aria-selected={sel}
+                    onClick={() => {
+                      const mm = parsed?.m ?? 0;
+                      onChange(toTime(h, mm));
+                    }}
+                  >
+                    {String(h).padStart(2, "0")}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="ui-time-divider" />
+          <div className="ui-time-col">
+            <div className="ui-time-col-head">分</div>
+            <div className="ui-time-list">
+              {minutes.map(mm => {
+                const sel = parsed?.m === mm;
+                return (
+                  <button
+                    key={mm}
+                    type="button"
+                    className={`ui-time-option ${sel ? "is-selected" : ""}`}
+                    aria-selected={sel}
+                    onClick={() => {
+                      const h = parsed?.h ?? 9;
+                      onChange(toTime(h, mm));
+                    }}
+                  >
+                    {String(mm).padStart(2, "0")}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <div className="ui-time-footer">
+          <button type="button" className="text-button" onClick={() => { const d = new Date(); onChange(toTime(d.getHours(), d.getMinutes())); setOpen(false); }}>现在</button>
+          <span className="ui-time-footer-spacer" />
+          {hasValue && <button type="button" className="button small" onClick={() => { onChange(""); setOpen(false); }}>清空</button>}
+          <button type="button" className="button primary small" onClick={() => setOpen(false)}>确定</button>
+        </div>
+      </div>,
+      document.body
+    );
+  })() : null;
+
+  const display = hasValue ? value : "";
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        disabled={disabled}
+        data-open={open ? "true" : "false"}
+        className={`ui-time-trigger variant-${variant} ${className} ${disabled ? "is-disabled" : ""} ${open ? "is-open" : ""} ${hasValue ? "has-value" : ""}`}
+        style={style}
+        onClick={() => { if (!disabled) setOpen(v => !v); }}
+      >
+        <Clock3 size={15} className="ui-time-icon" />
+        <span className={`ui-time-value ${!hasValue ? "is-placeholder" : ""}`}>{hasValue ? display : placeholder}</span>
+        <span className="ui-date-actions">
+          {hasValue && !disabled && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="清空时间"
+              className="ui-clear"
+              onClick={e => { e.stopPropagation(); onChange(""); }}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onChange(""); } }}
+            >
+              <X size={13} />
+            </span>
+          )}
+          <span className={`ui-select-chevron ${open ? "is-open" : ""}`}><ChevronDown size={14} strokeWidth={1.9} /></span>
+        </span>
+      </button>
+      {panel}
+    </>
+  );
 }
