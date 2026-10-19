@@ -60,7 +60,7 @@ for (const [index, team] of teams.entries()) {
     description: "已通过上线验收，正式交付使用。", priority: "medium", owner: "林小满",
     expectedDate: due(-4), stageId: "released", enteredAt: ago(4), blocked: false, blockReason: "",
     status: "released", source: "手工录入", externalId: null, createdBy: "preview-owner",
-    updatedBy: "preview-owner", createdAt: ago(21), updatedAt: ago(4), archivedAt: ago(4),
+    updatedBy: "preview-owner", createdAt: ago(21), updatedAt: ago(4), archivedAt: index === 0 ? null : ago(4),
   });
 }
 

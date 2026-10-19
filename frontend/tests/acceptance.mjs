@@ -83,12 +83,22 @@ try {
   r = (await workspace()).requirements.find(r => r.id === id);
   assert.equal(r.status, "released");
   assert.equal(r.blocked, false);
-  assert.ok(r.archivedAt);
+  assert.equal(r.archivedAt, null);
   await post("advance", { id, stageId: "released" }, 400, cookie);
+  await post("updateRequirement", { id, title: "已上线不可编辑", priority: "high" }, 400, cookie);
+  await post("cancel", { id }, 400, cookie);
+  await post("archive", { id }, 200, cookie);
+  r = (await workspace()).requirements.find(r => r.id === id);
+  assert.equal(r.status, "released");
+  assert.ok(r.archivedAt);
+  await post("archive", { id }, 400, cookie);
+  await post("updateRequirement", { id, title: "归档后不可编辑", priority: "high" }, 400, cookie);
   const cancelId = (await post("createRequirement", { teamId, title: "__验收：取消归档", priority: "low" }, 200, cookie)).id;
+  await post("archive", { id: cancelId }, 400, cookie);
   await post("cancel", { id: cancelId }, 200, cookie);
   assert.equal((await workspace()).requirements.find(r => r.id === cancelId).status, "cancelled");
-  check("Safe template migration, release archival and cancellation");
+  assert.ok((await workspace()).requirements.find(r => r.id === cancelId).archivedAt);
+  check("Safe template migration, manual archival and cancellation");
 
   await post("saveNotifications", { webhook: "https://example.com/robot/send?access_token=test", time: "09:30", enabled: false, appUrl: base }, 400);
   await post("saveNotifications", { time: "25:00", enabled: false, appUrl: base }, 400);
@@ -144,12 +154,16 @@ try {
   await page.getByRole("button", { name: "推进阶段", exact: true }).click();
   await page.getByRole("combobox", { name: "目标阶段", exact: true }).selectOption("released");
   await page.getByRole("button", { name: "确认推进", exact: true }).click();
-  await page.getByText("已顺利交付，自动归档", { exact: true }).waitFor();
+  await page.getByText("已顺利交付，等待归档", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "归档需求", exact: true }).click();
+  await page.getByRole("button", { name: "确认归档", exact: true }).click();
+  await page.getByText("已顺利交付，已归档", { exact: true }).waitFor();
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   const saved = (await workspace()).requirements.find(r => r.title === uiTitle);
   assert.equal(saved.status, "released");
+  assert.ok(saved.archivedAt);
   assert.equal(saved.description, "浏览器编辑保存成功");
-  check("Browser create, edit, block, unblock and release workflows");
+  check("Browser create, edit, block, unblock, release and archive workflows");
 
   await page.goto(base, { waitUntil: "networkidle" });
   assert.match(await page.locator(".date-range").innerText(), new RegExp(`近 ${baseline.newWindowDays} 天`));

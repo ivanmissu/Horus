@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { isFocused, isNew, newWindowDays, parseNewWindowDays, shanghaiClock } from "../src/lib/domain.ts";
+import { canArchive, isArchived, isFocused, isInFlight, isNew, newWindowDays, parseNewWindowDays, shanghaiClock } from "../src/lib/domain.ts";
 
 const previousHorus = process.env.HORUS_NEW_WINDOW_DAYS;
 const previousPublic = process.env.NEXT_PUBLIC_NEW_WINDOW_DAYS;
@@ -37,6 +37,12 @@ try {
   assert.equal(isNew(active("released"), now, 7), false);
   assert.equal(isFocused({ status: "active", createdAt: exact, blocked: true, priority: "low", expectedDate: null }, now, 7), true);
   assert.equal(isFocused({ status: "active", createdAt: exact, blocked: false, priority: "low", expectedDate: null }, now, 7), false);
+  assert.equal(isArchived({ archivedAt: "2026-10-16T00:00:00.000Z" }), true);
+  assert.equal(isArchived({ archivedAt: null }), false);
+  assert.equal(isInFlight({ archivedAt: null }), true);
+  assert.equal(canArchive({ status: "released", archivedAt: null }), true);
+  assert.equal(canArchive({ status: "released", archivedAt: "2026-10-16T00:00:00.000Z" }), false);
+  assert.equal(canArchive({ status: "active", archivedAt: null }), false);
   assert.equal(shanghaiClock("2026-10-16T01:30:00.000Z"), "09:30");
   assert.match(shanghaiClock(), /^\d{2}:\d{2}$/);
   console.log("DOMAIN WINDOW TESTS PASSED");

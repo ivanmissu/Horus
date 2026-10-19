@@ -48,3 +48,6 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 
 
 .preview-banner{margin:0 0 18px;padding:12px 16px;border-radius:8px;border:1px solid #e2d4a9;background:#fff9e7;color:#756031;font-size:12px;line-height:1.5}
+
+.drawer-status-note{display:inline-flex;align-items:center;gap:5px;margin-right:auto;font-size:10px;color:#9db195}
+.archive-requirement{margin-left:auto}

@@ -58,16 +58,23 @@ export async function POST(request: NextRequest) {
         await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: created.id, action, detail: values });
         return { id: created.id };
       });
-    } else if (["updateRequirement", "advance", "block", "cancel"].includes(action)) {
+    } else if (["updateRequirement", "advance", "block", "cancel", "archive"].includes(action)) {
       const id = Number(body.id);
       if (!Number.isInteger(id) || id < 1) throw new AppError("需求编号无效");
       await db.transaction(async tx => {
         const [current] = await tx.select().from(requirements).where(eq(requirements.id, id)).for("update");
         if (!current) throw new AppError("需求不存在", 404);
         assertTeam(actor, current.teamId);
-        if (current.status !== "active") throw new AppError("已归档需求为只读记录");
+        if (action === "archive") {
+          if (current.archivedAt) throw new AppError("该需求已归档，无需重复操作");
+          if (current.status !== "released") throw new AppError("只有已上线的需求才能归档");
+        } else if (current.status !== "active") {
+          throw new AppError(current.archivedAt ? "已归档需求为只读记录" : "已上线需求为只读记录，归档后仅可查阅");
+        }
         let patch: Partial<typeof requirements.$inferInsert> = { updatedAt: now, updatedBy: actor.id };
-        if (action === "updateRequirement") {
+        if (action === "archive") {
+          patch.archivedAt = now;
+        } else if (action === "updateRequirement") {
           patch = { ...patch, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate) };
         } else if (action === "advance") {
           const [team] = await tx.select().from(teams).where(eq(teams.id, current.teamId));
@@ -76,7 +83,7 @@ export async function POST(request: NextRequest) {
           if (target < 0 || target <= previous) throw new AppError("阶段只能向前推进，不允许回退或重复推进");
           patch.stageId = team.stages[target].id;
           patch.enteredAt = now;
-          if (target === team.stages.length - 1) Object.assign(patch, { status: "released", archivedAt: now, blocked: false, blockReason: "" });
+          if (target === team.stages.length - 1) Object.assign(patch, { status: "released", blocked: false, blockReason: "" });
         } else if (action === "block") {
           if (typeof body.blocked !== "boolean") throw new AppError("卡点状态无效");
           patch.blocked = body.blocked;
@@ -135,7 +142,7 @@ export async function POST(request: NextRequest) {
           const target = migrations[requirement.stageId];
           if (!target || !stages.some(s => s.id === target)) throw new AppError("被删除的阶段仍有关联需求，请为其选择迁移目标");
           const release = target === stages[stages.length - 1].id && requirement.status === "active";
-          await tx.update(requirements).set({ stageId: target, enteredAt: now, updatedAt: now, updatedBy: actor.id, ...(release ? { status: "released" as const, archivedAt: now, blocked: false, blockReason: "" } : {}) }).where(eq(requirements.id, requirement.id));
+          await tx.update(requirements).set({ stageId: target, enteredAt: now, updatedAt: now, updatedBy: actor.id, ...(release ? { status: "released" as const, blocked: false, blockReason: "" } : {}) }).where(eq(requirements.id, requirement.id));
           await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: requirement.id, action: "migrateStage", detail: { from: requirement.stageId, to: target } });
         }
         await tx.update(teams).set({ stages }).where(eq(teams.id, teamId));
