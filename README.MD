@@ -25,7 +25,7 @@ Horus 是面向**小型研发团队**的轻量化需求看盘与里程碑跟踪�
 
 ![Horus 工作台](docs/screenshots/dashboard.png)
 
-![Horus 团队详情](docs/screenshots/team-detail.png)
+![Horus 需求统计](docs/screenshots/stats.png)
 
 ## Quick Start（本地开发）
 
