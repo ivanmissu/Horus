@@ -7,8 +7,10 @@
 --
 -- 执行后：
 --   1. 应用侧可设置 HORUS_DB_PUSH=false；容器启动会校验 8 张表。
---   2. 运行 `cd frontend && npm run db:backfill`（或首次打开统计页时自动回填），
---      把历史需求补成生命周期事件；历史卡点标记为估算。
+--   2. 回填历史生命周期事件（任选其一，可重复执行）：
+--      docker compose exec horus node --experimental-strip-types /opt/horus-migrate/src/db/backfill-events-cli.ts
+--      cd frontend && DATABASE_URL=... npm run db:backfill
+--      或首次打开「需求统计」时由应用自动回填；历史卡点标记为估算。
 -- ============================================================================
 
 ALTER TABLE `horus_requirements`

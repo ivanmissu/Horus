@@ -2,8 +2,10 @@
 -- 适用：已经按旧版 01-schema.sql 建库、且要升级到带「需求统计」的版本。
 -- 新库请直接执行 01-schema.sql（已包含这些结构），不要执行本脚本。
 --
--- 执行后运行 `cd frontend && npm run db:backfill`（或首次打开统计页时自动回填），
--- 历史事件会按 createdAt / enteredAt / archivedAt 与审计日志补齐。
+-- 执行后回填历史事件（可重复执行）：
+--   docker compose exec horus node --experimental-strip-types /opt/horus-migrate/src/db/backfill-events-cli.ts
+--   cd frontend && DATABASE_URL=... npm run db:backfill
+-- 或首次打开「需求统计」时由应用自动回填；历史事件按 createdAt / enteredAt / archivedAt 与审计日志补齐。
 
 ALTER TABLE "horus_requirements" ADD COLUMN IF NOT EXISTS "released_at" varchar(40);
 ALTER TABLE "horus_requirements" ADD COLUMN IF NOT EXISTS "cancelled_at" varchar(40);

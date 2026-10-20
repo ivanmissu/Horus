@@ -297,11 +297,13 @@ docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$
 # 3) 启动应用；日志应出现 MySQL schema ready (8 tables)
 ./scripts/deploy.sh --no-build
 # 4) 回填历史生命周期事件（首次打开统计页也会自动回填）
-cd frontend && npm run db:backfill
+docker compose exec horus node --experimental-strip-types /opt/horus-migrate/src/db/backfill-events-cli.ts
 ```
 
 说明：
 
+- 第 4 步在容器内执行，直接复用容器里已配置的 `DATABASE_URL`；也可在能连到数据库的机器上，于仓库 `frontend/` 目录执行 `DATABASE_URL=... npm run db:backfill`。
+- 回填可重复执行：事件表对 `(requirement_id, type, created_at)` 有唯一约束，重复插入会被忽略。
 - 新库直接执行 `01-schema.sql`，**不要**再执行 04 升级脚本。
 - 历史数据的上线时间取 `enteredAt`、取消时间取 `archivedAt`，属于近似值；卡点历史优先用审计日志，覆盖不到的部分在统计页标注为估算。
 - 若使用 `HORUS_DB_PUSH=true`，Drizzle 也会自动补列和建表；`HORUS_DB_PUSH=false` 时必须先执行升级脚本，否则启动校验会因缺 `horus_requirement_events` 失败。

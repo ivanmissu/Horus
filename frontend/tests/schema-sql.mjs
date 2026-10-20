@@ -67,4 +67,45 @@ assert.deepEqual(
   "the entrypoint table check covers a different set of tables than schema.ts",
 );
 
+// The container runs `db:backfill` from the migrator stage, so every runtime
+// module the CLI imports (relative imports only) must be copied there. A
+// missing file only shows up as ERR_MODULE_NOT_FOUND on a live upgrade, which
+// is exactly the case this backfill exists for.
+const dockerfile = readFileSync(new URL("frontend/Dockerfile", root), "utf8");
+const migrator = dockerfile.split(/^FROM .* AS migrator$/m)[1]?.split(/^FROM /m)[0] ?? "";
+assert.ok(migrator, "Dockerfile no longer has a migrator stage");
+const copies = [...migrator.matchAll(/^COPY (?:--\S+ )?(.+?) (\S+)$/gm)]
+  .flatMap(([, sources, target]) => sources.trim().split(/\s+/).map(source => ({ source, target })));
+const shipped = new Set();
+for (const { source, target } of copies) {
+  if (target.endsWith("/") || !/\.[a-z]+$/.test(source)) continue; // directory copy: covered by prefix check below
+  shipped.add(target.replace(/^\.\//, ""));
+}
+function isShipped(file) {
+  if (shipped.has(file)) return true;
+  return copies.some(({ source, target }) => !/\.[a-z]+$/.test(source) && file.startsWith(`${target.replace(/^\.\//, "")}/`));
+}
+function runtimeImports(file) {
+  const source = readFileSync(new URL(`frontend/${file}`, root), "utf8");
+  return source.split("\n")
+    .filter(line => !line.trimStart().startsWith("import type"))
+    .flatMap(line => [...line.matchAll(/from\s+"(\.[^"]+)"/g)].map(match => match[1]));
+}
+const frontendRoot = new URL("frontend/", root);
+const toRelative = url => url.pathname.slice(frontendRoot.pathname.length);
+const pending = ["src/db/backfill-events-cli.ts"];
+const seen = new Set();
+const missing = [];
+while (pending.length) {
+  const file = pending.pop();
+  if (seen.has(file)) continue;
+  seen.add(file);
+  if (!isShipped(file)) missing.push(file);
+  for (const spec of runtimeImports(file)) {
+    pending.push(toRelative(new URL(spec, new URL(file, frontendRoot))));
+  }
+}
+assert.deepEqual(missing, [], `Dockerfile migrator stage is missing files needed by db:backfill: ${missing.join(", ")}`);
+
 console.log(`Schema SQL / Drizzle schema / entrypoint check are in sync (${tables.size} tables)`);
+console.log(`db:backfill runtime modules are shipped in the image (${seen.size} files checked)`);
