@@ -1,5 +1,5 @@
-import { drizzle } from "drizzle-orm/mysql2";
-import { pool } from "@/db";
+import { eq, sql } from "drizzle-orm";
+import { databaseDialect, db, pool } from "@/db";
 import { teams, members, requirements, notificationSettings } from "@/db/schema";
 import { DEFAULT_STAGES, todayString } from "@/lib/domain";
 
@@ -9,17 +9,23 @@ export function ensureSeed() {
   return seeded;
 }
 async function seed() {
-  const connection = await pool.getConnection();
+  const connection: any = databaseDialect === "mysql" ? await (pool as any).getConnection() : undefined;
   let lockAcquired = false;
   let connectionHealthy = true;
   try {
-    const [lockResult] = await connection.query("select get_lock(?, 10) as acquired", ["horus_seed"]);
-    const lockRows = lockResult as unknown as { acquired: number | null }[];
-    if (!Array.isArray(lockRows) || Number(lockRows[0]?.acquired) !== 1) throw new Error("Unable to acquire MySQL seed lock");
-    lockAcquired = true;
-    await drizzle(connection).transaction(async tx => {
+    if (databaseDialect === "mysql") {
+      const [lockResult] = await connection.query("select get_lock(?, 10) as acquired", ["horus_seed"]);
+      const lockRows = lockResult as unknown as { acquired: number | null }[];
+      if (!Array.isArray(lockRows) || Number(lockRows[0]?.acquired) !== 1) throw new Error("Unable to acquire MySQL seed lock");
+      lockAcquired = true;
+    }
+    await db.transaction(async tx => {
+      if (databaseDialect === "postgres") await tx.execute(sql`SELECT pg_advisory_xact_lock(22061015)`);
       const existing = await tx.select({ id: teams.id }).from(teams).limit(1);
       if (existing.length) return;
+      // Keep a pre-existing production owner (id="owner"); give the seeded demo owner a separate ID.
+      const [existingOwner] = await tx.select({ id: members.id }).from(members).where(eq(members.id, "owner")).limit(1);
+      const demoOwnerId = existingOwner ? "demo-owner" : "owner";
       await tx.insert(teams).values([
         { id: "platform", name: "基础平台组", description: "构建稳定、高效、可复用的技术底座", color: "purple", icon: "code", stages: DEFAULT_STAGES },
         { id: "product", name: "业务产品组", description: "以用户体验为中心，持续交付业务价值", color: "blue", icon: "layers", stages: DEFAULT_STAGES },
@@ -27,7 +33,7 @@ async function seed() {
         { id: "infra", name: "基础设施组", description: "保障每一次交付的可靠与高效", color: "orange", icon: "server", stages: DEFAULT_STAGES },
       ]);
       await tx.insert(members).values([
-        { id: "owner", name: "陈予安", username: "chen", role: "owner", teamIds: [] },
+        { id: demoOwnerId, name: "陈予安", username: "chen", role: "owner", teamIds: [] },
         { id: "pm-lin", name: "林小满", username: "lin", role: "pm", teamIds: ["platform", "infra"] },
         { id: "pm-su", name: "苏晓", username: "su", role: "pm", teamIds: ["product"] },
         { id: "pm-zhou", name: "周亦舟", username: "zhou", role: "pm", teamIds: ["data"] },
@@ -92,20 +98,24 @@ async function seed() {
           { teamId, title: `${teamId === "platform" ? "旧版网关兼容适配" : teamId === "product" ? "活动页面模板扩展" : teamId === "data" ? "旧版报表迁移" : "备用集群扩容"}`, description: "经团队评估，当前阶段暂不投入，保留记录以供后续参考。", priority: "low", owner: teamId === "product" ? "苏晓" : teamId === "data" ? "周亦舟" : "林小满", stageId: "design", status: "cancelled", enteredAt: ago(8), createdAt: ago(24), updatedAt: ago(5), archivedAt: ago(5), createdBy, updatedBy: createdBy },
         ]);
       }
-      await tx.insert(notificationSettings).values({ id: "default" });
+      // Production may already have settings; demo seeding must not reset user-configured notifications.
+      const [existingSettings] = await tx.select({ id: notificationSettings.id }).from(notificationSettings).where(eq(notificationSettings.id, "default")).limit(1);
+      if (!existingSettings) await tx.insert(notificationSettings).values({ id: "default" });
     });
   } catch (error) {
     connectionHealthy = false;
     throw error;
   } finally {
-    if (connectionHealthy && lockAcquired) {
+    if (connection && connectionHealthy && lockAcquired) {
       try {
         await connection.query("select release_lock(?)", ["horus_seed"]);
       } catch {
         connectionHealthy = false;
       }
     }
-    if (connectionHealthy) connection.release();
-    else connection.destroy();
+    if (connection) {
+      if (connectionHealthy) connection.release();
+      else connection.destroy();
+    }
   }
 }

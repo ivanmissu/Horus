@@ -33,7 +33,9 @@ export async function getActor(): Promise<{ actor: Member; demo: boolean }> {
     return { actor: publicMember(result.member), demo: false };
   }
   if (!demoMode) throw new AppError("请先登录", 401);
-  const [owner] = await db.select().from(members).where(and(eq(members.id, "owner"), eq(members.active, true)));
+  const owners = await db.select().from(members).where(and(eq(members.role, "owner"), eq(members.active, true)));
+  // Prefer the dedicated seeded demo owner when production already has the reserved "owner" ID.
+  const owner = owners.find(member => member.id === "demo-owner") ?? owners.find(member => member.id === "owner");
   if (!owner) throw new AppError("请先登录", 401);
   return { actor: publicMember(owner), demo: true };
 }

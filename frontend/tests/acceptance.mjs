@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { chromium } from "playwright";
 import { eq, inArray, or, sql } from "drizzle-orm";
-import { db, pool } from "../src/db/index.ts";
+import { databaseDialect, db, pool } from "../src/db/index.ts";
 import { teams, members, requirements, sessions, auditLogs, notificationSettings } from "../src/db/schema.ts";
 import { claimScheduledDigest } from "../src/lib/digest-claim.ts";
 import { todayString } from "../src/lib/domain.ts";
@@ -242,7 +242,13 @@ try {
     await db.transaction(async tx => {
       const fixtureRows = await tx.select({ id: requirements.id }).from(requirements).where(eq(requirements.teamId, teamId));
       const fixtureIds = fixtureRows.map(r => r.id);
-      await tx.delete(auditLogs).where(or(inArray(auditLogs.requirementId, fixtureIds.length ? fixtureIds : [-1]), eq(auditLogs.actorId, memberId || "__no_member__"), sql`JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.teamId')) = ${teamId}`, sql`JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.memberId')) = ${memberId || "__no_member__"}`));
+      const teamAuditRef = databaseDialect === "postgres"
+        ? sql`(${auditLogs.detail}->>'teamId') = ${teamId}`
+        : sql`JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.teamId')) = ${teamId}`;
+      const memberAuditRef = databaseDialect === "postgres"
+        ? sql`(${auditLogs.detail}->>'memberId') = ${memberId || "__no_member__"}`
+        : sql`JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.memberId')) = ${memberId || "__no_member__"}`;
+      await tx.delete(auditLogs).where(or(inArray(auditLogs.requirementId, fixtureIds.length ? fixtureIds : [-1]), eq(auditLogs.actorId, memberId || "__no_member__"), teamAuditRef, memberAuditRef));
       if (memberId) await tx.delete(sessions).where(eq(sessions.memberId, memberId));
       await tx.delete(requirements).where(eq(requirements.teamId, teamId));
       if (memberId) await tx.delete(members).where(eq(members.id, memberId));

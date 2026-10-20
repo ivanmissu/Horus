@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { eq } from "drizzle-orm";
-import { db, pool } from "./index.ts";
+import { databaseDialect, db, pool } from "./index.ts";
 import { members, notificationSettings } from "./schema.ts";
 
 async function initializeProductionData() {
@@ -35,7 +35,12 @@ async function initializeProductionData() {
       console.info(`Created initial owner account '${username}'. Set its password on first login.`);
     }
 
-    await tx.insert(notificationSettings).values({ id: "default" }).onDuplicateKeyUpdate({ set: { id: "default" } });
+    const settingsInsert = tx.insert(notificationSettings).values({ id: "default" });
+    if (databaseDialect === "postgres") {
+      await (settingsInsert as any).onConflictDoNothing({ target: notificationSettings.id });
+    } else {
+      await settingsInsert.onDuplicateKeyUpdate({ set: { id: "default" } });
+    }
   });
   console.info("Horus production data initialization complete.");
 }
