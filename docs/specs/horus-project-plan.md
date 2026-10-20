@@ -8,6 +8,16 @@
 - **技术路线**：基于现有 `frontend/` Next.js 全栈原型直接生产化改造（Next.js App Router + Drizzle ORM + MySQL 8.0 + Docker 单实例容器化）
 - **执行状态（2026-10-16）**：M1–M4 代码已落地。M3 完成每日摘要数据库抢占、过期会话清理、新建窗口配置（`HORUS_NEW_WINDOW_DAYS` / `NEXT_PUBLIC_NEW_WINDOW_DAYS`，默认 7）及验收断言；M4 完成 standalone 构建、`frontend/Dockerfile`、`docker-compose.yml`、`.env.example` 与 [`docs/deployment-guide.md`](../deployment-guide.md)。M5 本地预检已执行：`npm ci`、lint、typecheck、domain 测试、build、生产默认鉴权测试均通过；后在沙箱安装 MySQL 5.7.29 测试实例，完成 7 表初始化、演示数据灌入、`test:digest`、`/api/health` 及读写烟测（详见记录）。MySQL 8.0 的 `drizzle-kit push`、Playwright、Docker 健康检查与内网/钉钉实测尚未执行，不可宣称已投产。现场逐项记录见 [M5 UAT 与投产记录](../m5-uat-checklist.md)。
 
+## 目录
+
+1. [项目概览与总体策略](#1-项目概览与总体策略)
+2. [现状盘点与差距分析](#2-现状盘点与差距分析gap-analysis)
+3. [项目里程碑与 5 日冲刺计划（WBS）](#3-项目里程碑与-5-日冲刺计划wbs)
+4. [关键技术改造设计方案](#4-关键技术改造设计方案technical-blueprint)
+5. [质量保障与验收标准](#5-质量保障与验收标准qa--acceptance-checklist)
+6. [风险识别与应对预案](#6-风险识别与应对预案risk-matrix)
+7. [下一步执行建议](#7-下一步执行建议action-items)
+
 ---
 
 ## 1. 项目概览与总体策略
@@ -230,6 +240,8 @@ MySQL 数据层迁移  ───►  生产解耦与管理闭环  ───►  
 | `updateTeam` | `assertOwner(actor)` | `{ id: string, name: string, description: string, color: string }` | 1. 校验团队名称非空且不与其他团队重名；<br>2. 映射 `color` 对应的默认 `icon`；<br>3. 更新 `teams` 表并写入 `auditLogs`。 |
 
 ### 4.4 生产环境变量规范（`.env.example`）
+
+> 下文为规划时的变量快照。**现行权威版本**以仓库根目录 `.env.example` 为准；每个变量的完整说明、默认值与跨部署路线适用矩阵，统一见[环境变量参考](../environment-variables.md)。
 
 ```dotenv
 # 数据库连接（必填，MySQL 8.0+）
