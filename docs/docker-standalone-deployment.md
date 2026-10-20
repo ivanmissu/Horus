@@ -1,7 +1,7 @@
 # Horus · 纯 Docker 部署（不用 Docker Compose）
 
 - 关联文档：[环境变量参考](./environment-variables.md) · [Compose 部署手册](./deployment-guide.md) · [Kubernetes 部署](./kubernetes-deployment.md)
-- 已有 MySQL 实例、服务器没装 Compose v2，或希望手工掌控容器时，可以完全不用 `docker-compose.yml`，只用 `docker` 原生命令部署。镜像构建、启动初始化（等库 → 同步 7 张表 → 创建初始负责人）与 Compose 方式完全一致，差别只在编排、健康检查和运维命令要手写。
+- 已有 MySQL 实例、服务器没装 Compose v2，或希望手工掌控容器时，可以完全不用 `docker-compose.yml`，只用 `docker` 原生命令部署。镜像构建、启动初始化（等库 → 同步 8 张表 → 创建初始负责人）与 Compose 方式完全一致，差别只在编排、健康检查和运维命令要手写。
 
 > 若由 DBA 提前用 SQL 建好表，可在下面第 4 步的 `docker run` 里加 `-e HORUS_DB_PUSH=false`（已跑 `02-init-owner.sql` 时再加 `-e HORUS_DB_INIT=false`），容器启动就不再跑 Drizzle。详见 [Kubernetes 部署说明](kubernetes-deployment.md) 第 4 节与 [`scripts/init-sql.sh`](../scripts/init-sql.sh)。
 
@@ -20,12 +20,10 @@
 ## 1. 构建镜像
 
 ```bash
-docker build \
-  --build-arg NEXT_PUBLIC_NEW_WINDOW_DAYS=7 \
-  -t horus:local ./frontend
+docker build -t horus:local ./frontend
 ```
 
-`NEXT_PUBLIC_NEW_WINDOW_DAYS` 是构建期值，运行时若调整「本周新建」窗口（1–90），需同时改运行时变量与这个构建参数并重建镜像。
+「本周新建」使用自然周（周一 00:00 Asia/Shanghai），无需构建参数或窗口天数配置。
 
 ## 2. 创建网络与数据卷
 
@@ -76,8 +74,6 @@ docker run -d \
   -e HORUS_INIT_OWNER_USERNAME=admin \
   -e HORUS_INIT_OWNER_NAME='团队负责人' \
   -e APP_URL='http://<服务器IP>:3000' \
-  -e HORUS_NEW_WINDOW_DAYS=7 \
-  -e NEXT_PUBLIC_NEW_WINDOW_DAYS=7 \
   -e HORUS_DB_CONNECTION_LIMIT=10 \
   -e TZ=Asia/Shanghai \
   --log-opt max-size=10m --log-opt max-file=3 \
@@ -99,12 +95,19 @@ docker run -d \
 | `HORUS_DEMO_MODE` | ✅ 生产固定 | `false` | 生产红线，禁止 `true` |
 | `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | 可选 | `admin` / `团队负责人` | 仅首次建负责人有效 |
 | `APP_URL` | ✅ | — | 同事实际打开的地址，钉钉链接兜底 |
-| `HORUS_NEW_WINDOW_DAYS` | 可选 | `7` | 「本周新建」窗口 1–90，运行时生效 |
-| `NEXT_PUBLIC_NEW_WINDOW_DAYS` | 构建期 | `7` | 构建期兜底，运行时 `-e` 不改已构建的前端；与上一项保持一致 |
 | `HORUS_DB_CONNECTION_LIMIT` | 可选 | `10` | 连接池上限 |
 | `HORUS_DB_PUSH` / `HORUS_DB_INIT` | 可选 | `true` | 表已由外部 SQL 建好时设 `false`（缺表仍拒绝启动）；仅容器入口读取 |
 | `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT` | 可选 | `90` / `180` | 等库秒数上限 / 单步墙钟上限 |
 | `TZ` | 可选 | `Asia/Shanghai` | 容器日志时区 |
+
+## 4.1 已有 MySQL 升级到「需求统计」
+
+```bash
+docker exec -i horus-mysql mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < deploy/mysql/04-stats-upgrade.sql
+cd frontend && DATABASE_URL='mysql://...' npm run db:backfill
+```
+
+新库直接执行 `01-schema.sql` 即可，不要执行升级脚本。升级后容器日志应出现 `MySQL schema ready (8 tables)`；历史上线/取消与卡点数据为近似回填，统计页会标注估算。
 
 ## 5. 验证与首次登录
 
@@ -154,7 +157,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 ```bash
 # 1) 先备份（同上）
 # 2) 拉取新代码或解压新版本包，重建镜像
-docker build --build-arg NEXT_PUBLIC_NEW_WINDOW_DAYS=7 -t horus:local ./frontend
+docker build -t horus:local ./frontend
 # 3) 用新镜像重建应用容器（MySQL 容器与数据卷不动）
 docker rm -f horus-app
 # 4) 重新执行第 4 步的 docker run 命令（环境变量保持不变）

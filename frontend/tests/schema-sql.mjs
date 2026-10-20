@@ -12,7 +12,7 @@ const entrySource = readFileSync(new URL("frontend/docker-entrypoint.sh", root),
 
 const tables = new Map();
 const starts = [...schemaSource.matchAll(/export const \w+ = mysqlTable\(\s*"([a-z0-9_]+)"/g)];
-assert.ok(starts.length >= 7, `expected at least 7 tables in schema.ts, found ${starts.length}`);
+assert.ok(starts.length >= 8, `expected at least 8 tables in schema.ts, found ${starts.length}`);
 starts.forEach((match, i) => {
   const end = starts[i + 1] ? starts[i + 1].index : schemaSource.length;
   const body = schemaSource.slice(match.index, end);
@@ -51,6 +51,10 @@ for (const constraint of [
   "CONSTRAINT `horus_members_username_unique` UNIQUE(`username`)",
   "CREATE INDEX `horus_sessions_member_id_idx` ON `horus_sessions` (`member_id`)",
   "CREATE INDEX `horus_audit_logs_requirement_id_idx` ON `horus_audit_logs` (`requirement_id`)",
+  "CONSTRAINT `horus_requirement_events_unique` UNIQUE(`requirement_id`,`type`,`created_at`)",
+  "CREATE INDEX `horus_requirement_events_requirement_id_idx` ON `horus_requirement_events` (`requirement_id`)",
+  "CREATE INDEX `horus_requirement_events_created_at_idx` ON `horus_requirement_events` (`created_at`)",
+  "CREATE INDEX `horus_requirement_events_team_id_idx` ON `horus_requirement_events` (`team_id`)",
 ]) {
   assert.ok(sqlSource.includes(constraint), `01-schema.sql is missing: ${constraint}`);
 }

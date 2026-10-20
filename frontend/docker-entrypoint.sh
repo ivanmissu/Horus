@@ -2,7 +2,7 @@
 # Horus container bootstrap. Load the mounted environment first, wait for the
 # configured database, prepare the schema, initialize the owner, then start Next.js.
 #
-# HORUS_DB_PUSH=false skips drizzle-kit push but still verifies all seven tables.
+# HORUS_DB_PUSH=false skips drizzle-kit push but still verifies all eight tables.
 # HORUS_DB_INIT=false skips the idempotent owner/notification bootstrap.
 # HORUS_DB_WAIT_TIMEOUT=90 limits connection retries; HORUS_DB_STEP_TIMEOUT=180
 # limits each database step (0 disables the step timeout).
@@ -130,6 +130,7 @@ const required = [
   "horus_requirements",
   "horus_sessions",
   "horus_audit_logs",
+  "horus_requirement_events",
   "horus_notification_settings",
   "horus_notification_logs",
 ];

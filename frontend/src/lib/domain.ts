@@ -10,7 +10,9 @@ export const DEFAULT_STAGES: Stage[] = [
   { id: "released", name: "正式上线" },
 ];
 export const PRIORITIES = { high: "高优先级", medium: "中优先级", low: "低优先级" };
-const DEFAULT_NEW_WINDOW_DAYS = 7;
+const DAY_MS = 86400000;
+/** Asia/Shanghai is UTC+8 all year, so fixed-offset arithmetic is safe. */
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
 export function todayString(now: string | Date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
 }
@@ -20,16 +22,40 @@ export function shanghaiClock(now: string | Date = new Date()) {
   const minute = parts.find(part => part.type === "minute")?.value ?? "00";
   return `${hour === "24" ? "00" : hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
 }
-export function parseNewWindowDays(value: unknown) {
-  const raw = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim() : "";
-  if (!/^\d+$/.test(raw)) return undefined;
-  const parsed = Number(raw);
-  if (parsed < 1 || parsed > 90) return undefined;
-  return parsed;
+/** 00:00 of the Shanghai calendar day containing `now`. */
+export function startOfShanghaiDay(now: string | Date = new Date()) {
+  return new Date(`${todayString(now)}T00:00:00+08:00`);
 }
-/** Runtime `HORUS_NEW_WINDOW_DAYS` wins; `NEXT_PUBLIC_NEW_WINDOW_DAYS` is the build-time fallback. */
-export function newWindowDays() {
-  return parseNewWindowDays(process.env.HORUS_NEW_WINDOW_DAYS) ?? parseNewWindowDays(process.env.NEXT_PUBLIC_NEW_WINDOW_DAYS) ?? DEFAULT_NEW_WINDOW_DAYS;
+/** Monday 00:00 (Asia/Shanghai) of the natural week containing `now`. */
+export function startOfShanghaiWeek(now: string | Date = new Date()) {
+  const dayStart = startOfShanghaiDay(now);
+  // getUTCDay() on the plain calendar date avoids local-machine timezone drift.
+  const weekday = new Date(`${todayString(now)}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+  return new Date(dayStart.getTime() - ((weekday + 6) % 7) * DAY_MS);
+}
+/** First day 00:00 (Asia/Shanghai) of the natural month containing `now`. */
+export function startOfShanghaiMonth(now: string | Date = new Date()) {
+  return new Date(`${todayString(now).slice(0, 7)}-01T00:00:00+08:00`);
+}
+export function addDays(value: Date, days: number) {
+  return new Date(value.getTime() + days * DAY_MS);
+}
+export function addMonths(value: Date, months: number) {
+  const ymd = todayString(value);
+  const year = Number(ymd.slice(0, 4));
+  const monthIndex = Number(ymd.slice(5, 7)) - 1 + months;
+  const targetYear = year + Math.floor(monthIndex / 12);
+  const targetMonth = ((monthIndex % 12) + 12) % 12;
+  return new Date(`${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-01T00:00:00+08:00`);
+}
+export function shortDate(value: string | null) {
+  if (!value) return "未填期望上线";
+  const date = value.slice(0, 10).split("-");
+  return `${date[1]}.${date[2]}`;
+}
+/** Inclusive display range from two Shanghai calendar dates (YYYY-MM-DD). */
+export function dateRangeLabel(start: string, end: string) {
+  return `${shortDate(start)} – ${shortDate(end)}`;
 }
 /** A requirement leaves every in-flight view only once it has been archived. */
 export function isArchived(r: Pick<Requirement, "archivedAt">) {
@@ -42,16 +68,21 @@ export function isInFlight(r: Pick<Requirement, "archivedAt">) {
 export function canArchive(r: Pick<Requirement, "status" | "archivedAt">) {
   return r.status === "released" && !r.archivedAt;
 }
-export function isNew(r: Requirement, now: string | Date = new Date(), windowDays = newWindowDays()) {
-  const days = parseNewWindowDays(windowDays) ?? DEFAULT_NEW_WINDOW_DAYS;
-  return r.status === "active" && new Date(now).getTime() - new Date(r.createdAt).getTime() < days * 86400000;
+/**
+ * 「本周新建」= created in the current natural week (Monday 00:00 Asia/Shanghai)
+ * and still active. Released, cancelled and archived requirements are excluded.
+ */
+export function isNew(r: Pick<Requirement, "status" | "createdAt">, now: string | Date = new Date()) {
+  const created = new Date(r.createdAt).getTime();
+  const current = new Date(now).getTime();
+  return r.status === "active" && created >= startOfShanghaiWeek(now).getTime() && created <= current;
 }
-export function isOverdue(r: Requirement, now: string | Date = new Date()) {
+export function isOverdue(r: Pick<Requirement, "status" | "priority" | "expectedDate">, now: string | Date = new Date()) {
   return r.status === "active" && r.priority === "high" && !!r.expectedDate && r.expectedDate < todayString(now);
 }
 /** Union of the three highlight rules; the workbench itself lists every unarchived requirement. */
-export function isFocused(r: Requirement, now: string | Date = new Date(), windowDays = newWindowDays()) {
-  return r.status === "active" && (isNew(r, now, windowDays) || r.blocked || isOverdue(r, now));
+export function isFocused(r: Pick<Requirement, "status" | "createdAt" | "blocked" | "priority" | "expectedDate">, now: string | Date = new Date()) {
+  return r.status === "active" && (isNew(r, now) || r.blocked || isOverdue(r, now));
 }
 export function daysSince(value: string, now: string | Date = new Date()) {
   return Math.max(0, Math.floor((new Date(now).getTime() - new Date(value).getTime()) / 86400000));
@@ -59,12 +90,8 @@ export function daysSince(value: string, now: string | Date = new Date()) {
 export function daysOverdue(value: string, now: string | Date = new Date()) {
   return Math.max(0, Math.round((new Date(todayString(now)).getTime() - new Date(value).getTime()) / 86400000));
 }
-export function shortDate(value: string | null) {
-  if (!value) return "未填期望上线";
-  const date = value.slice(0, 10).split("-");
-  return `${date[1]}.${date[2]}`;
-}
 export function requirementCode(id: number) { return `HR-${1000 + id}`; }
 export function canMaintain(actor: { role: string; teamIds: string[] }, teamId: string) {
   return actor.role === "owner" || actor.teamIds.includes(teamId);
 }
+export { DAY_MS, SHANGHAI_OFFSET_MS };

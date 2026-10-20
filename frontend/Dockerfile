@@ -12,8 +12,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-ARG NEXT_PUBLIC_NEW_WINDOW_DAYS=7
-ENV NEXT_PUBLIC_NEW_WINDOW_DAYS=$NEXT_PUBLIC_NEW_WINDOW_DAYS
 RUN npm run build
 
 FROM docker.1ms.run/library/node:22-bookworm-slim AS migrator

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 import { databaseDialect, db } from "@/db";
-import { teams, members, requirements, auditLogs, notificationSettings, sessions } from "@/db/schema";
+import { teams, members, requirements, auditLogs, requirementEvents, notificationSettings, sessions } from "@/db/schema";
 import { loadWorkspace } from "@/lib/data";
 import { isPreviewMode } from "@/lib/preview";
 import { getActor, AppError, assertOwner, assertTeam } from "@/lib/auth";
@@ -32,6 +32,21 @@ function fail(error: unknown) {
   console.error("Horus request failed", error);
   return NextResponse.json({ error: "暂时无法完成操作，请稍后重试" }, { status: 500 });
 }
+type LifecycleEvent = {
+  type: "created" | "released" | "cancelled" | "archived" | "blocked" | "unblocked";
+  detail?: Record<string, unknown>;
+};
+async function recordLifecycle(tx: any, requirementId: number, teamId: string, now: string, events: LifecycleEvent[]) {
+  if (!events.length) return;
+  await tx.insert(requirementEvents).values(events.map(event => ({
+    requirementId,
+    teamId,
+    type: event.type,
+    detail: event.detail ?? {},
+    estimated: false,
+    createdAt: now,
+  })));
+}
 export async function GET() {
   try { return NextResponse.json(await loadWorkspace(), { headers: { "Cache-Control": "no-store" } }); }
   catch (error) { return fail(error); }
@@ -59,6 +74,7 @@ export async function POST(request: NextRequest) {
           ? await (insert as any).returning({ id: requirements.id })
           : await insert.$returningId();
         await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: created.id, action, detail: values });
+        await recordLifecycle(tx, created.id, teamId, now, [{ type: "created", detail: { title: values.title } }]);
         return { id: created.id };
       });
     } else if (["updateRequirement", "advance", "block", "cancel", "archive"].includes(action)) {
@@ -75,8 +91,10 @@ export async function POST(request: NextRequest) {
           throw new AppError(current.archivedAt ? "已归档需求为只读记录" : "已上线需求为只读记录，归档后仅可查阅");
         }
         let patch: Partial<typeof requirements.$inferInsert> = { updatedAt: now, updatedBy: actor.id };
+        const events: LifecycleEvent[] = [];
         if (action === "archive") {
           patch.archivedAt = now;
+          events.push({ type: "archived" });
         } else if (action === "updateRequirement") {
           patch = { ...patch, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate) };
         } else if (action === "advance") {
@@ -86,14 +104,25 @@ export async function POST(request: NextRequest) {
           if (target < 0 || target <= previous) throw new AppError("阶段只能向前推进，不允许回退或重复推进");
           patch.stageId = team.stages[target].id;
           patch.enteredAt = now;
-          if (target === team.stages.length - 1) Object.assign(patch, { status: "released", blocked: false, blockReason: "" });
+          if (target === team.stages.length - 1) {
+            Object.assign(patch, { status: "released", blocked: false, blockReason: "", releasedAt: now });
+            events.push({ type: "released", detail: { stageId: team.stages[target].id } });
+            if (current.blocked) events.push({ type: "unblocked", detail: { reason: "released" } });
+          }
         } else if (action === "block") {
           if (typeof body.blocked !== "boolean") throw new AppError("卡点状态无效");
+          const reason = body.blocked ? text(body.blockReason, "卡点原因", true, 500) : "";
           patch.blocked = body.blocked;
-          patch.blockReason = body.blocked ? text(body.blockReason, "卡点原因", true, 500) : "";
-        } else Object.assign(patch, { status: "cancelled", archivedAt: now, blocked: false, blockReason: "" });
+          patch.blockReason = reason;
+          if (body.blocked !== current.blocked) events.push({ type: body.blocked ? "blocked" : "unblocked", detail: { reason } });
+        } else {
+          Object.assign(patch, { status: "cancelled", archivedAt: now, cancelledAt: now, blocked: false, blockReason: "" });
+          events.push({ type: "cancelled" });
+          if (current.blocked) events.push({ type: "unblocked", detail: { reason: "cancelled" } });
+        }
         await tx.update(requirements).set(patch).where(eq(requirements.id, id));
         await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: id, action, detail: patch });
+        await recordLifecycle(tx, id, current.teamId, now, events);
       });
     } else if (action === "createTeam") {
       assertOwner(actor);
@@ -145,8 +174,24 @@ export async function POST(request: NextRequest) {
           const target = migrations[requirement.stageId];
           if (!target || !stages.some(s => s.id === target)) throw new AppError("被删除的阶段仍有关联需求，请为其选择迁移目标");
           const release = target === stages[stages.length - 1].id && requirement.status === "active";
-          await tx.update(requirements).set({ stageId: target, enteredAt: now, updatedAt: now, updatedBy: actor.id, ...(release ? { status: "released" as const, blocked: false, blockReason: "" } : {}) }).where(eq(requirements.id, requirement.id));
+          // Migrating a finished requirement must not rewrite the timestamp it
+          // entered its final stage: statistics use it as the release time.
+          const preserveEnteredAt = requirement.status !== "active";
+          const releasedAt = requirement.status === "released" ? requirement.releasedAt ?? requirement.enteredAt : undefined;
+          await tx.update(requirements).set({
+            stageId: target,
+            ...(preserveEnteredAt ? {} : { enteredAt: now }),
+            updatedAt: now,
+            updatedBy: actor.id,
+            ...(releasedAt ? { releasedAt } : {}),
+            ...(release ? { status: "released" as const, blocked: false, blockReason: "", releasedAt: now } : {}),
+          }).where(eq(requirements.id, requirement.id));
           await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: requirement.id, action: "migrateStage", detail: { from: requirement.stageId, to: target } });
+          if (release) {
+            const events: LifecycleEvent[] = [{ type: "released", detail: { stageId: target, migrated: true } }];
+            if (requirement.blocked) events.push({ type: "unblocked", detail: { reason: "migrated" } });
+            await recordLifecycle(tx, requirement.id, teamId, now, events);
+          }
         }
         await tx.update(teams).set({ stages }).where(eq(teams.id, teamId));
         await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { teamId, stages, migrations } });

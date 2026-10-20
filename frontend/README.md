@@ -4,7 +4,8 @@ Horus 是面向小型研发团队的里程碑跟踪工具，基于 Next.js App R
 
 ## 功能
 
-- 工作台：按团队分组展示全部未归档需求；近 7 天新建、卡点、高优逾期以标记高亮并可筛选。
+- 工作台：按团队分组展示全部未归档需求；本周新建（周一 00:00 起）、卡点、高优逾期以标记高亮并可筛选。
+- 需求统计：按自然周/自然月汇总新建、上线、取消、卡点、归档、存量、逾期与团队对比；历史数据自动回填并标注估算。
 - 团队详情：阶段分布、筛选与排序、在途和归档列表。
 - 需求全生命周期：创建、编辑、跳阶段推进、卡点标记和解除、取消、上线后手动归档。
 - 阶段模板：团队独立配置阶段；删除仍有需求的阶段时必须指定迁移目标。
@@ -28,17 +29,18 @@ npm run dev
 
 `DATABASE_URL` 支持 `mysql://`、`postgres://` 和 `postgresql://`。Drizzle 配置会据此自动选择 MySQL 或 PostgreSQL schema/驱动。`db:init` 幂等地创建初始负责人（默认账号 `admin`）与通知设置行；不会为已有负责人重置密码。首次登录时设置密码。
 
+从旧版本升级时，先执行 `deploy/mysql/04-stats-upgrade.sql`（PostgreSQL 为 `deploy/postgres/03-stats-upgrade.sql`），再运行 `npm run db:backfill` 回填历史生命周期事件；该命令可重复执行，首次打开「需求统计」也会自动回填。
+
 可选环境变量：
 
 - `HORUS_INIT_OWNER_USERNAME`：首次创建负责人时使用的账号，默认 `admin`。
 - `HORUS_INIT_OWNER_NAME`：首次创建负责人时使用的姓名，默认 `团队负责人`。
 - `HORUS_DEMO_MODE=true`：仅用于本地/受控演示。显式启用后自动灌入演示团队和需求，并允许免登录负责人体验；默认未开启，匿名访问工作台会跳转至 `/login`。
 - `HORUS_DB_CONNECTION_LIMIT`：数据库连接池大小；MySQL 默认 `10`，Vercel 上 PostgreSQL 默认 `3`（应配合 Supabase 连接池使用）。
-- `HORUS_DB_PUSH` / `HORUS_DB_INIT`：容器启动入口的开关，仅影响镜像里的 `docker-entrypoint.sh`（`npm run dev` 不读）。可在 MySQL 的 `deploy/mysql/` 或 PostgreSQL 的 `deploy/postgres/` 中提前执行对应 SQL，再设置 `HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`。跳过 push 后启动仍会校验 7 张表齐全。
+- `HORUS_DB_PUSH` / `HORUS_DB_INIT`：容器启动入口的开关，仅影响镜像里的 `docker-entrypoint.sh`（`npm run dev` 不读）。可在 MySQL 的 `deploy/mysql/` 或 PostgreSQL 的 `deploy/postgres/` 中提前执行对应 SQL，再设置 `HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`。跳过 push 后启动仍会校验 8 张表齐全。
 - `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT`：容器入口等待数据库的秒数上限（默认 `90`）与单个数据库步骤的墙钟上限（默认 `180`，`0` 关闭），避免数据库不可达时启动无限期挂住。
 - `APP_URL`：钉钉摘要链接的兜底地址。
-- `HORUS_NEW_WINDOW_DAYS`：首页「本周新建」滚动窗口，默认 `7`，允许 1–90。运行时读取，并随工作台数据下发给页面。
-- `NEXT_PUBLIC_NEW_WINDOW_DAYS`：同上窗口的构建期兜底。两者都配置时，以 `HORUS_NEW_WINDOW_DAYS` 为准。
+- 「本周新建」使用自然周（周一 00:00 Asia/Shanghai），不再提供窗口天数配置。
 
 **不要在生产环境开启 `HORUS_DEMO_MODE`。** 生产模式默认强制登录，不会自动创建演示业务数据。
 

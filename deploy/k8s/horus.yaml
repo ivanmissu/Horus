@@ -3,7 +3,7 @@
 #
 # Before applying:
 #   1. Initialize the external MySQL once: DATABASE_URL=... ./scripts/init-sql.sh
-#      (7 tables + initial owner, no DDL rights needed afterwards)
+#      (8 tables + initial owner, no DDL rights needed afterwards)
 #   2. Put the runtime .env into a Secret named horus-env, key ".env":
 #      kubectl -n horus create secret generic horus-env --from-file=.env=/secure/horus/.env
 #      Include HORUS_DB_PUSH=false (and HORUS_DB_INIT=false) so startup skips drizzle-kit.

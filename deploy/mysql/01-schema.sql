@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Horus V1 · MySQL 8.0 建表脚本（01-schema.sql）
 -- ----------------------------------------------------------------------------
--- 来源：由 frontend/src/db/schema.ts 经 drizzle-kit generate 生成（7 张表），
+-- 来源：由 frontend/src/db/schema.ts 经 drizzle-kit generate 生成（8 张表），
 --       与应用启动时 drizzle-kit push 的目标结构一致。
 -- 用途：在【空库】上人工初始化，或上线前评审表结构时使用；推荐通过
 --       ./scripts/init-sql.sh 执行（会顺带校验结果）。
@@ -59,6 +59,18 @@ CREATE TABLE `horus_notification_settings` (
 	CONSTRAINT `horus_notification_settings_id` PRIMARY KEY(`id`)
 );
 
+CREATE TABLE `horus_requirement_events` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`requirement_id` int NOT NULL,
+	`team_id` varchar(64) NOT NULL,
+	`type` varchar(24) NOT NULL,
+	`detail` json NOT NULL,
+	`estimated` boolean NOT NULL DEFAULT false,
+	`created_at` varchar(40) NOT NULL,
+	CONSTRAINT `horus_requirement_events_id` PRIMARY KEY(`id`),
+	CONSTRAINT `horus_requirement_events_unique` UNIQUE(`requirement_id`,`type`,`created_at`)
+);
+
 CREATE TABLE `horus_requirements` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`team_id` varchar(64) NOT NULL,
@@ -78,6 +90,8 @@ CREATE TABLE `horus_requirements` (
 	`updated_by` varchar(64),
 	`created_at` varchar(40) NOT NULL,
 	`updated_at` varchar(40) NOT NULL,
+	`released_at` varchar(40),
+	`cancelled_at` varchar(40),
 	`archived_at` varchar(40),
 	CONSTRAINT `horus_requirements_id` PRIMARY KEY(`id`)
 );
@@ -106,4 +120,7 @@ ALTER TABLE `horus_requirements` ADD CONSTRAINT `horus_requirements_created_by_h
 ALTER TABLE `horus_requirements` ADD CONSTRAINT `horus_requirements_updated_by_horus_members_id_fk` FOREIGN KEY (`updated_by`) REFERENCES `horus_members`(`id`) ON DELETE no action ON UPDATE no action;
 ALTER TABLE `horus_sessions` ADD CONSTRAINT `horus_sessions_member_id_horus_members_id_fk` FOREIGN KEY (`member_id`) REFERENCES `horus_members`(`id`) ON DELETE no action ON UPDATE no action;
 CREATE INDEX `horus_audit_logs_requirement_id_idx` ON `horus_audit_logs` (`requirement_id`);
+CREATE INDEX `horus_requirement_events_requirement_id_idx` ON `horus_requirement_events` (`requirement_id`);
+CREATE INDEX `horus_requirement_events_created_at_idx` ON `horus_requirement_events` (`created_at`);
+CREATE INDEX `horus_requirement_events_team_id_idx` ON `horus_requirement_events` (`team_id`);
 CREATE INDEX `horus_sessions_member_id_idx` ON `horus_sessions` (`member_id`);

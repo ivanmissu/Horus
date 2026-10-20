@@ -6,6 +6,10 @@ assert.equal(apiResponse.status, 401, "workspace API must reject anonymous reque
 const apiBody = await apiResponse.json();
 assert.equal(apiBody.error, "请先登录");
 
+const statsResponse = await fetch(`${base}/api/stats?granularity=week`, { redirect: "manual" });
+assert.equal(statsResponse.status, 401, "statistics API must reject anonymous requests");
+assert.equal((await statsResponse.json()).error, "请先登录");
+
 const rootResponse = await fetch(base, { redirect: "manual" });
 assert.ok([307, 308].includes(rootResponse.status), `expected login redirect, got ${rootResponse.status}`);
 assert.ok(rootResponse.headers.get("location")?.endsWith("/login"), "anonymous page request must redirect to /login");

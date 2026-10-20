@@ -1,51 +1,47 @@
 import assert from "node:assert/strict";
-import { canArchive, isArchived, isFocused, isInFlight, isNew, newWindowDays, parseNewWindowDays, shanghaiClock } from "../src/lib/domain.ts";
+import {
+  addMonths,
+  canArchive,
+  dateRangeLabel,
+  isArchived,
+  isFocused,
+  isInFlight,
+  isNew,
+  shanghaiClock,
+  startOfShanghaiMonth,
+  startOfShanghaiWeek,
+} from "../src/lib/domain.ts";
 
-const previousHorus = process.env.HORUS_NEW_WINDOW_DAYS;
-const previousPublic = process.env.NEXT_PUBLIC_NEW_WINDOW_DAYS;
+const iso = value => new Date(value).toISOString();
 
-function restoreEnv() {
-  if (previousHorus === undefined) delete process.env.HORUS_NEW_WINDOW_DAYS;
-  else process.env.HORUS_NEW_WINDOW_DAYS = previousHorus;
-  if (previousPublic === undefined) delete process.env.NEXT_PUBLIC_NEW_WINDOW_DAYS;
-  else process.env.NEXT_PUBLIC_NEW_WINDOW_DAYS = previousPublic;
-}
+// 2026-10-21 12:00 Asia/Shanghai = Wednesday of the week starting 10-19.
+const wednesday = "2026-10-21T04:00:00.000Z";
+assert.equal(iso(startOfShanghaiWeek(wednesday)), "2026-10-18T16:00:00.000Z");
+assert.equal(iso(startOfShanghaiWeek("2026-10-18T15:59:59.999Z")), "2026-10-11T16:00:00.000Z", "Sunday 23:59 belongs to the previous week");
+assert.equal(iso(startOfShanghaiWeek("2026-10-18T16:00:00.000Z")), "2026-10-18T16:00:00.000Z", "Monday 00:00 starts the new week");
+assert.equal(iso(startOfShanghaiWeek("2026-10-25T15:59:59.999Z")), "2026-10-18T16:00:00.000Z");
+assert.equal(iso(startOfShanghaiWeek("2026-10-25T16:00:00.000Z")), "2026-10-25T16:00:00.000Z");
+assert.equal(iso(startOfShanghaiMonth(wednesday)), "2026-09-30T16:00:00.000Z");
+assert.equal(iso(addMonths(startOfShanghaiMonth(wednesday), -1)), "2026-08-31T16:00:00.000Z");
+assert.equal(dateRangeLabel("2026-10-19", "2026-10-25"), "10.19 – 10.25");
 
-try {
-  delete process.env.HORUS_NEW_WINDOW_DAYS;
-  delete process.env.NEXT_PUBLIC_NEW_WINDOW_DAYS;
-  assert.equal(newWindowDays(), 7);
-  assert.equal(parseNewWindowDays("0"), undefined);
-  assert.equal(parseNewWindowDays("91"), undefined);
-  assert.equal(parseNewWindowDays("7.5"), undefined);
-  assert.equal(parseNewWindowDays("nope"), undefined);
+const active = (createdAt, status = "active") => ({ status, createdAt, blocked: false, priority: "low", expectedDate: null });
+assert.equal(isNew(active("2026-10-18T16:00:00.000Z"), wednesday), true, "Monday 00:00 counts as this week");
+assert.equal(isNew(active("2026-10-18T15:59:59.999Z"), wednesday), false, "last Sunday does not count");
+assert.equal(isNew(active("2026-10-21T04:00:00.001Z"), wednesday), false, "future timestamps do not count");
+assert.equal(isNew(active("2026-10-19T02:00:00.000Z", "released"), wednesday), false, "released requirements are not 本周新建");
+assert.equal(isNew(active("2026-10-19T02:00:00.000Z", "cancelled"), wednesday), false, "cancelled requirements are not 本周新建");
 
-  process.env.NEXT_PUBLIC_NEW_WINDOW_DAYS = "14";
-  assert.equal(newWindowDays(), 14);
-  process.env.HORUS_NEW_WINDOW_DAYS = "3";
-  assert.equal(newWindowDays(), 3, "runtime HORUS_NEW_WINDOW_DAYS overrides the public build value");
-  process.env.HORUS_NEW_WINDOW_DAYS = "bad";
-  assert.equal(newWindowDays(), 14, "invalid runtime value falls back to NEXT_PUBLIC_NEW_WINDOW_DAYS");
+assert.equal(isFocused({ status: "active", createdAt: "2026-10-01T00:00:00.000Z", blocked: true, priority: "low", expectedDate: null }, wednesday), true);
+assert.equal(isFocused({ status: "active", createdAt: "2026-10-18T15:59:59.999Z", blocked: false, priority: "low", expectedDate: null }, wednesday), false);
+assert.equal(isFocused({ status: "active", createdAt: "2026-10-18T16:00:00.000Z", blocked: false, priority: "low", expectedDate: null }, wednesday), true);
 
-  const now = "2026-10-16T12:00:00.000Z";
-  const justInside = new Date(new Date(now).getTime() - 7 * 86400000 + 1).toISOString();
-  const exact = new Date(new Date(now).getTime() - 7 * 86400000).toISOString();
-  const active = status => ({ status, createdAt: justInside, blocked: false, priority: "low", expectedDate: null });
-  assert.equal(isNew(active("active"), now, 7), true);
-  assert.equal(isNew({ status: "active", createdAt: exact }, now, 7), false);
-  assert.equal(isNew({ status: "active", createdAt: exact }, now, 8), true);
-  assert.equal(isNew(active("released"), now, 7), false);
-  assert.equal(isFocused({ status: "active", createdAt: exact, blocked: true, priority: "low", expectedDate: null }, now, 7), true);
-  assert.equal(isFocused({ status: "active", createdAt: exact, blocked: false, priority: "low", expectedDate: null }, now, 7), false);
-  assert.equal(isArchived({ archivedAt: "2026-10-16T00:00:00.000Z" }), true);
-  assert.equal(isArchived({ archivedAt: null }), false);
-  assert.equal(isInFlight({ archivedAt: null }), true);
-  assert.equal(canArchive({ status: "released", archivedAt: null }), true);
-  assert.equal(canArchive({ status: "released", archivedAt: "2026-10-16T00:00:00.000Z" }), false);
-  assert.equal(canArchive({ status: "active", archivedAt: null }), false);
-  assert.equal(shanghaiClock("2026-10-16T01:30:00.000Z"), "09:30");
-  assert.match(shanghaiClock(), /^\d{2}:\d{2}$/);
-  console.log("DOMAIN WINDOW TESTS PASSED");
-} finally {
-  restoreEnv();
-}
+assert.equal(isArchived({ archivedAt: "2026-10-16T00:00:00.000Z" }), true);
+assert.equal(isArchived({ archivedAt: null }), false);
+assert.equal(isInFlight({ archivedAt: null }), true);
+assert.equal(canArchive({ status: "released", archivedAt: null }), true);
+assert.equal(canArchive({ status: "released", archivedAt: "2026-10-16T00:00:00.000Z" }), false);
+assert.equal(canArchive({ status: "active", archivedAt: null }), false);
+assert.equal(shanghaiClock("2026-10-16T01:30:00.000Z"), "09:30");
+assert.match(shanghaiClock(), /^\d{2}:\d{2}$/);
+console.log("DOMAIN NATURAL-WEEK TESTS PASSED");

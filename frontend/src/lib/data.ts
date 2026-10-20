@@ -2,7 +2,6 @@ import { db } from "@/db";
 import { teams, members, requirements, notificationSettings, notificationLogs } from "@/db/schema";
 import { asc, desc } from "drizzle-orm";
 import { getActor, publicMember } from "./auth";
-import { newWindowDays } from "./domain";
 import { isPreviewMode } from "./preview";
 import { previewWorkspace } from "./preview-data";
 import { normalizePendingItems } from "./notification-settings";
@@ -24,6 +23,6 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
   return {
     teams: allTeams, members: allMembers.map(publicMember), requirements: allRequirements,
     settings: { ...safeSettings, hasWebhook: !!webhook, hasSigningSecret: !!signingSecret, pendingCount: normalizePendingItems(pendingItems).length },
-    logs, actor, demo, embeddedAuth: process.env.HORUS_EMBEDDED_PREVIEW === "true", now: new Date().toISOString(), newWindowDays: newWindowDays(),
+    logs, actor, demo, embeddedAuth: process.env.HORUS_EMBEDDED_PREVIEW === "true", now: new Date().toISOString(),
   };
 }

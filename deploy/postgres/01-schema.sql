@@ -1,4 +1,4 @@
--- Horus V1 · PostgreSQL schema (7 tables).
+-- Horus V1 · PostgreSQL schema (8 tables).
 -- Apply once to an empty database; the application uses Drizzle's matching
 -- schema at frontend/src/db/schema.postgres.ts.
 
@@ -27,6 +27,17 @@ CREATE TABLE "horus_members" (
   CONSTRAINT "horus_members_username_unique" UNIQUE ("username")
 );
 
+CREATE TABLE "horus_requirement_events" (
+  "id" serial PRIMARY KEY,
+  "requirement_id" integer NOT NULL,
+  "team_id" varchar(64) NOT NULL,
+  "type" varchar(24) NOT NULL,
+  "detail" jsonb NOT NULL,
+  "estimated" boolean NOT NULL DEFAULT false,
+  "created_at" varchar(40) NOT NULL,
+  CONSTRAINT "horus_requirement_events_unique" UNIQUE ("requirement_id", "type", "created_at")
+);
+
 CREATE TABLE "horus_requirements" (
   "id" serial PRIMARY KEY,
   "team_id" varchar(64) NOT NULL,
@@ -46,6 +57,8 @@ CREATE TABLE "horus_requirements" (
   "updated_by" varchar(64),
   "created_at" varchar(40) NOT NULL,
   "updated_at" varchar(40) NOT NULL,
+  "released_at" varchar(40),
+  "cancelled_at" varchar(40),
   "archived_at" varchar(40),
   CONSTRAINT "horus_requirements_team_id_horus_teams_id_fk"
     FOREIGN KEY ("team_id") REFERENCES "horus_teams"("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
@@ -94,12 +107,16 @@ CREATE TABLE "horus_notification_logs" (
 );
 
 CREATE INDEX "horus_audit_logs_requirement_id_idx" ON "horus_audit_logs" ("requirement_id");
+CREATE INDEX "horus_requirement_events_requirement_id_idx" ON "horus_requirement_events" ("requirement_id");
+CREATE INDEX "horus_requirement_events_created_at_idx" ON "horus_requirement_events" ("created_at");
+CREATE INDEX "horus_requirement_events_team_id_idx" ON "horus_requirement_events" ("team_id");
 CREATE INDEX "horus_sessions_member_id_idx" ON "horus_sessions" ("member_id");
 
 -- The application uses a server-only PostgreSQL URL. Do not expose these
 -- tables through Supabase's public Data API (there are intentionally no policies).
 ALTER TABLE "horus_teams" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_members" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "horus_requirement_events" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_requirements" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_sessions" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_audit_logs" ENABLE ROW LEVEL SECURITY;

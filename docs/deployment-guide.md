@@ -48,10 +48,11 @@ horus-app ──出站──► https://oapi.dingtalk.com（每日异常摘要�
 | `docker-compose.yml` | 编排 app + MySQL，含健康检查、依赖顺序、数据卷 |
 | `.env.example` | 环境变量模板，复制为 `.env` 后改密码与地址 |
 | `scripts/deploy.sh` | **一键部署**：环境检查 → 构建启动 → 健康检查（支持 `--no-build`） |
-| `scripts/init-db.sh` | 数据库初始化/重跑校验：建表 + 初始负责人 + 7 表齐全性校验（幂等） |
+| `scripts/init-db.sh` | 数据库初始化/重跑校验：建表 + 初始负责人 + 8 表齐全性校验（幂等） |
 | `scripts/init-sql.sh` | 在**外部/已有 MySQL** 上一次性建表 + 建负责人（跑 `deploy/mysql/*.sql` 并校验），之后可关掉容器内的 Drizzle 同步 |
 | `scripts/backup.sh` / `scripts/restore.sh` | 数据库备份（.sql.gz）/ 恢复（恢复前自动留底，需 `--yes` 确认） |
-| `deploy/mysql/01-schema.sql` | 7 张表建表 DDL（由 Drizzle Schema 生成），供 DBA 人工建库/评审 |
+| `deploy/mysql/01-schema.sql` | 8 张表建表 DDL（由 Drizzle Schema 生成），供 DBA 人工建库/评审 |
+| `deploy/mysql/04-stats-upgrade.sql` | 旧库升级到「需求统计」的一次性脚本（新库不要执行） |
 | `deploy/mysql/02-init-owner.sql` | 初始负责人 + 通知设置 SQL 版（与应用 `db:init` 等价，幂等） |
 | `frontend/docker-entrypoint.sh` | 容器启动脚本：等 MySQL → 同步表结构 → 初始化负责人 → 启动应用（可用 `HORUS_DB_PUSH` / `HORUS_DB_INIT` 关掉前两步） |
 
@@ -130,8 +131,6 @@ HORUS_INIT_OWNER_NAME=团队负责人
 
 # ── 对外地址与业务行为 ───────────────────────────────────
 APP_URL=http://192.168.1.50:3000               # 同事实际打开的地址；钉钉摘要链接兜底（页面通知设置优先）
-HORUS_NEW_WINDOW_DAYS=7                        # 「本周新建」窗口 1–90，与下一项保持一致
-NEXT_PUBLIC_NEW_WINDOW_DAYS=7                  # 构建期兜底值，改了要重新构建
 
 # ── 端口与时区 ───────────────────────────────────────────
 HORUS_PORT=3000                                # 宿主机映射端口，被占用改这里
@@ -155,7 +154,7 @@ TZ=Asia/Shanghai
 | `HORUS_PORT` | 宿主机映射端口，默认 `3000`；被占用就改这里，不要改容器内端口 |
 | `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | 初始负责人账号/姓名，默认 `admin` / `团队负责人`。**仅首次初始化时有效**，之后改这里不会改已有账号 |
 
-保持不动的项：`HORUS_DEMO_MODE=false`（生产红线：开启会灌演示数据并允许免登录）、`HORUS_NEW_WINDOW_DAYS=7` 与 `NEXT_PUBLIC_NEW_WINDOW_DAYS=7`（「本周新建」窗口，两者保持一致）、`TZ=Asia/Shanghai`。
+保持不动的项：`HORUS_DEMO_MODE=false`（生产红线：开启会灌演示数据并允许免登录）、`TZ=Asia/Shanghai`。「本周新建」已改为自然周（周一 00:00），无需再配置窗口天数。
 
 改完自查（不应再出现 `change_me`）：
 
@@ -195,10 +194,10 @@ docker compose logs -f horus         # 看启动过程，Ctrl+C 退出不影响�
 **容器启动时自动完成的初始化**（`docker-entrypoint.sh`，无需人工干预）：
 
 1. 等待 MySQL 可查询（最长 90 秒，靠 compose 健康检查 + 脚本双重等待）；
-2. `drizzle-kit push` 同步 7 张表结构，并逐表校验齐全，缺表直接启动失败（不会假装成功）；
+2. `drizzle-kit push` 同步 8 张表结构，并逐表校验齐全，缺表直接启动失败（不会假装成功）；
 3. `db:init` 幂等创建初始负责人与通知设置默认行——每次启动都跑，但**不覆盖**已有负责人密码和已保存的钉钉配置；
 
-第 2、3 步各有一个开关（`HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`，见第 5 节路径 D）。关掉第 2 步后**仍会校验 7 张表**，缺表照样拒绝启动，不会带着空库上线。
+第 2、3 步各有一个开关（`HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`，见第 5 节路径 D）。关掉第 2 步后**仍会校验 8 张表**，缺表照样拒绝启动，不会带着空库上线。
 4. 以 standalone 模式监听 `0.0.0.0:3000`，进程内每分钟调度检查钉钉摘要与过期会话清理（单实例假设，勿扩容）。
 
 ---
@@ -218,7 +217,7 @@ docker compose logs -f horus         # 看启动过程，Ctrl+C 退出不影响�
 ```bash
 ./scripts/init-db.sh
 # 依次：容器内 drizzle-kit push 同步表结构 -> db:init 创建/保留负责人 -> 校验输出
-# 期望结尾：tables=7 / owner=admin password_set=0|1 / notification_settings=1
+# 期望结尾：tables=8 / owner=admin password_set=0|1 / notification_settings=1
 ```
 
 幂等性说明：表已存在则结构同步为空操作；负责人已存在则保留原样（姓名、密码都不动）；通知行用 `INSERT IGNORE` 语义。**它不会重置任何人的密码**——PM 忘密码走页面上负责人「重置密码」，不要指望重跑脚本。
@@ -251,7 +250,7 @@ docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$
 
 注意事项：
 
-- `01-schema.sql` 是一次性建表脚本（7 张表：`horus_teams`、`horus_members`、`horus_requirements`、`horus_sessions`、`horus_audit_logs`、`horus_notification_settings`、`horus_notification_logs`），对已有数据的库重复执行会因表/外键已存在报错，不要拿它当升级脚本；结构变更仍走应用启动时的 Drizzle 同步或 DBA 评审后的变更单。
+- `01-schema.sql` 是一次性建表脚本（8 张表：`horus_teams`、`horus_members`、`horus_requirements`、`horus_requirement_events`、`horus_sessions`、`horus_audit_logs`、`horus_notification_settings`、`horus_notification_logs`），对已有数据的库重复执行会因表/外键已存在报错，不要拿它当升级脚本；结构变更仍走应用启动时的 Drizzle 同步或 DBA 评审后的变更单。
 - `02-init-owner.sql` 执行前可改文件头的 `@owner_username` / `@owner_name`；与 `db:init` 二选一即可，重复执行无副作用。若走 compose 部署，`.env` 里的 `HORUS_INIT_OWNER_*` 应与 SQL 中一致，避免两处口径不同。
 - 首选仍是路径 A：手工 SQL 一旦与 `frontend/src/db/schema.ts` 漂移，启动校验会以缺表/结构同步失败的形式暴露，但排查成本高于自动路径。漂移可由 `npm run test:schema-sql` 提前查出（比对 `01-schema.sql` 与 `schema.ts` 的表名、列名和关键约束）。
 
@@ -275,7 +274,7 @@ printf 'HORUS_DB_PUSH=false\nHORUS_DB_INIT=false\n' >> .env
 
 | 变量 | 默认 | 关掉后的效果 |
 |---|---|---|
-| `HORUS_DB_PUSH` | `true` | `false`：不执行 `drizzle-kit push`；启动时只查 `information_schema` 确认 7 张表存在 |
+| `HORUS_DB_PUSH` | `true` | `false`：不执行 `drizzle-kit push`；启动时只查 `information_schema` 确认 8 张表存在 |
 | `HORUS_DB_INIT` | `true` | `false`：不执行 `db:init`。仅在已跑 `02-init-owner.sql` 时设置，否则没有负责人账号、无法首次登录 |
 | `HORUS_DB_WAIT_TIMEOUT` | `90` | 等 MySQL 可查询的秒数 |
 | `HORUS_DB_STEP_TIMEOUT` | `180` | 每个数据库步骤的墙钟上限（`0` 关闭）。让「连不上」变成明确失败，而不是无限期吊着 rollout |
@@ -284,14 +283,34 @@ printf 'HORUS_DB_PUSH=false\nHORUS_DB_INIT=false\n' >> .env
 
 - 表结构从此由**你**维护。每次升级前确认该版本 `frontend/src/db/schema.ts` 有无变化；有变化就先备份、由 DBA 执行对应 DDL（或临时把 `HORUS_DB_PUSH` 设回 `true` 启动一次同步后再关掉）。
 - 应用账号可以收紧到 `SELECT/INSERT/UPDATE/DELETE`，这通常是走本路径的原因。
-- 新库上线后请核对日志出现 `MySQL schema ready (7 tables)`；缺表会以 `Schema sync did not create: …` 直接启动失败。
+- 新库上线后请核对日志出现 `MySQL schema ready (8 tables)`；缺表会以 `Schema sync did not create: …` 直接启动失败。
 - 手工 SQL 与 Drizzle schema 的同步由 `npm run test:schema-sql` 兜底，改表时两侧都要动。
+
+### 路径 E：从旧版本升级到「需求统计」（已有数据）
+
+「需求统计」新增 `horus_requirements.released_at` / `cancelled_at` 两列和 `horus_requirement_events` 事件表。已有数据库升级步骤：
+
+```bash
+# 1) 先备份数据库
+# 2) MySQL 旧库执行一次性升级脚本（PostgreSQL 用 deploy/postgres/03-stats-upgrade.sql）
+docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < deploy/mysql/04-stats-upgrade.sql
+# 3) 启动应用；日志应出现 MySQL schema ready (8 tables)
+./scripts/deploy.sh --no-build
+# 4) 回填历史生命周期事件（首次打开统计页也会自动回填）
+cd frontend && npm run db:backfill
+```
+
+说明：
+
+- 新库直接执行 `01-schema.sql`，**不要**再执行 04 升级脚本。
+- 历史数据的上线时间取 `enteredAt`、取消时间取 `archivedAt`，属于近似值；卡点历史优先用审计日志，覆盖不到的部分在统计页标注为估算。
+- 若使用 `HORUS_DB_PUSH=true`，Drizzle 也会自动补列和建表；`HORUS_DB_PUSH=false` 时必须先执行升级脚本，否则启动校验会因缺 `horus_requirement_events` 失败。
 
 ### 初始化做了/没做什么（避免误会）
 
 | 做了 | 没做 |
 |---|---|
-| 建 7 张表、建负责人（密码为空）、建通知设置默认行 | 不灌任何演示团队/需求（演示数据只在 `HORUS_DEMO_MODE=true` 时出现） |
+| 建 8 张表、建负责人（密码为空）、建通知设置默认行 | 不灌任何演示团队/需求（演示数据只在 `HORUS_DEMO_MODE=true` 时出现） |
 | 每次启动重复执行且幂等 | 不给负责人预设密码——密码由本人在首次登录时设置（见第 6 节） |
 
 账号建错且**尚未投产**时，宁可推倒重来也不要改库凑合：备份后 `docker compose down -v` 清卷，按第 4 节重新部署（**会清空全部数据，仅限未投产时**）。已投产后账号问题一律走页面功能（改名、停用、重置密码）。
@@ -313,7 +332,7 @@ printf 'HORUS_DB_PUSH=false\nHORUS_DB_INIT=false\n' >> .env
 2. 「阶段模板」→ 按团队增删、改名、调序阶段。删除仍有需求的阶段时必须指定迁移目标，这是防丢数据的强制校验，前后端都会拦。
 3. 预建 ≤3 个 PM 账号并绑定团队，把账号告知本人首次登录设密；顺手用测试账号验证停用/重置密码后旧会话立即 401。
 4. PM 录入首批在途需求。抽查推进（只能向前跳、不能回退）、卡点标记、推到末阶段标记上线、再由详情手动归档三条规则。
-5. 负责人在桌面与手机核对首页全部未归档需求按团队分组展示，近 7 天新建、卡点、高优逾期高亮并可筛选。
+5. 负责人在桌面与手机核对首页全部未归档需求按团队分组展示，本周新建、卡点、高优逾期高亮并可筛选；打开「需求统计」核对周/月切换与团队筛选。
 
 逐项签收表在 [M5 清单](./m5-uat-checklist.md) 的 T5.3/T5.4，本节全部做完才算业务初始化完成。
 
@@ -343,7 +362,7 @@ docker compose restart horus               # 只重启应用（会重跑建表�
 docker compose stop                        # 停服（保留容器与数据）
 docker compose start                       # 启服
 curl -fsS http://127.0.0.1:${HORUS_PORT:-3000}/api/health   # 健康自检
-./scripts/init-db.sh                       # 核查 7 表与负责人状态
+./scripts/init-db.sh                       # 核查 8 表与负责人状态
 docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"'   # root 应急进库（密码读容器环境变量）
 ```
 
@@ -393,7 +412,7 @@ git pull                                   # 2) 拉新代码（或解压新版�
 
 - 启动时的结构同步对无变更是空操作；`drizzle-kit push --force` 会自动接受 Drizzle 认为可能丢数据的变更（如删列），**发版前先看 schema diff**，不能接受自动删列时停在旧版，走 DBA 变更单手工迁移后再升级。
 - 走路径 D（`HORUS_DB_PUSH=false`）时**没有任何自动同步**：升级前必须自己确认表结构是否需要变更（对比 `frontend/src/db/schema.ts` 与库内结构，或跑一次 `npm run test:schema-sql` 看 SQL 文件有没有漂移），需要变更就由 DBA 执行 DDL 后再换镜像/重启。
-- 若改过「本周新建」窗口，`.env` 中 `HORUS_NEW_WINDOW_DAYS` 与 `NEXT_PUBLIC_NEW_WINDOW_DAYS` 保持一致再构建（前者运行时下发页面，后者是构建期兜底）。
+- 升级到含「需求统计」的版本时，旧库先执行 `deploy/mysql/04-stats-upgrade.sql`（PostgreSQL 用 `deploy/postgres/03-stats-upgrade.sql`），再运行 `cd frontend && npm run db:backfill`；新库直接执行 01-schema.sql 即可。
 - 回滚：切回上一版代码重新 `./scripts/deploy.sh`，并用升级前备份 `./scripts/restore.sh <备份> --yes` 连库一起回退。不要只回滚应用而留下不兼容的新表结构。
 
 ---
@@ -436,7 +455,7 @@ cp .env.example .env && vi .env        # 按第 3 节改密码与 APP_URL
 | 端口被占用，容器起不来 | 宿主机 3000 已有进程 | 改 `.env` 的 `HORUS_PORT` 后重新 `up -d`，同步更新 `APP_URL` 端口 |
 | 09:30 没有群消息 | 容器当时不在线/未开启摘要/Webhook 未保存/容器出站不通 | 查页面「推送记录」与当天日志；确认第 8 节开关与出站；失败项次日会自动合并重发，不要手工改 `last_run_date` |
 | 同一天收到两条定时摘要 | 不应发生（发信前有数据库抢占） | 区分是否为一条「立即发送测试」+一条定时（这是正常）；两条都是定时则保留日志报障 |
-| 页面「本周新建」天数不对 | `HORUS_NEW_WINDOW_DAYS` 与预期不符 | 该值随接口下发，改 `.env` 后重启 `horus` 即可；构建兜底值不一致时按 9.4 同步后重建 |
+| 「本周新建」与预期不符 | 浏览器/服务器时区不是 Asia/Shanghai，或数据创建时间不在本周一之后 | 业务判断固定使用 Asia/Shanghai；页面显示「本周新建窗口」的起止日期，可据此核对数据 |
 | 手机/异地电脑打不开 | 防火墙未放行、或 `APP_URL` 写了 `localhost` | 放行应用端口（第 1 节）；`APP_URL` 必须是客户端可达地址，不能写 `localhost` 给别人用 |
 | 经反向代理写操作被拦/登录态丢失 | 转发头不全 | 按 9.3 补齐 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto`，且 `APP_URL` 与实际访问协议域名一致 |
 
