@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { chromium } from "playwright";
 import { eq, inArray, or, sql } from "drizzle-orm";
 import { databaseDialect, db, pool } from "../src/db/index.ts";
-import { teams, members, requirements, sessions, auditLogs, notificationSettings } from "../src/db/schema.ts";
+import { teams, members, requirements, sessions, auditLogs, requirementEvents, notificationSettings } from "../src/db/schema.ts";
 import { claimScheduledDigest } from "../src/lib/digest-claim.ts";
 import { todayString } from "../src/lib/domain.ts";
 
@@ -28,11 +28,17 @@ const check = name => console.log(`PASS ${name}`);
 try {
   const baseline = await workspace();
   assert.equal(baseline.teams.length >= 4, true);
-  assert.equal(Number.isInteger(baseline.newWindowDays) && baseline.newWindowDays >= 1 && baseline.newWindowDays <= 90, true);
+  assert.equal("newWindowDays" in baseline, false, "the rolling window payload must be gone");
   assert.equal("webhook" in baseline.settings, false);
   assert.equal("signingSecret" in baseline.settings, false);
   assert.equal(baseline.members.some(m => "passwordHash" in m), false);
-  check("Workspace and secret redaction");
+  const stats = (await request("/api/stats?granularity=week")).data;
+  assert.equal(stats.granularity, "week");
+  assert.equal(stats.buckets.length, 12);
+  assert.equal(stats.teams.length >= 4, true);
+  assert.equal(typeof stats.current.created, "number");
+  assert.equal(stats.buckets.at(-1).current, true);
+  check("Workspace, secret redaction and weekly statistics API");
   teamId = (await post("createTeam", { name: `__验收临时团队_${suffix}`, description: "自动化验收后清理", color: "teal" })).id;
   const editedTeamName = `__验收临时团队_${suffix}_已编辑`;
   await post("updateTeam", { id: teamId, name: editedTeamName, description: "团队信息编辑验收", color: "orange" });
@@ -174,7 +180,7 @@ try {
   check("Browser create, edit, block, unblock, release and archive workflows");
 
   await page.goto(base, { waitUntil: "networkidle" });
-  assert.match(await page.locator(".date-range").innerText(), new RegExp(`近 ${baseline.newWindowDays} 天`));
+  assert.match(await page.locator(".date-range").innerText(), /本周新建窗口/);
   const inFlight = (await workspace()).requirements.filter(r => !r.archivedAt);
   assert.equal(await page.locator(".metric-card").filter({ hasText: "全部在途" }).locator(".metric-middle strong").textContent(), String(inFlight.length).padStart(2, "0"));
   await page.locator(".focus-tab").filter({ hasText: "全部在途" }).click();
@@ -198,10 +204,14 @@ try {
   await page.getByRole("dialog").waitFor();
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("textbox", { name: "搜索需求、负责人", exact: true }).fill("");
-  for (const path of ["/requirements", "/archive", "/settings/stages", "/settings/members", "/settings/notifications", "/login"]) {
+  for (const path of ["/stats", "/requirements", "/archive", "/settings/stages", "/settings/members", "/settings/notifications", "/login"]) {
     const response = await page.goto(base + path, { waitUntil: "networkidle" });
     assert.equal(response.status(), 200, path);
   }
+  await page.goto(`${base}/stats`, { waitUntil: "networkidle" });
+  assert.equal(await page.getByRole("heading", { level: 1 }).textContent(), "需求统计");
+  await page.locator(".stats-chart").first().waitFor();
+  assert.equal(await page.locator(".stats-table").count() >= 2, true);
   check("Dashboard filtering, collapse, search and every application route");
   await page.goto(`${base}/settings/members`, { waitUntil: "networkidle" });
   await page.locator(".team-list-tabs button").nth(1).click();
@@ -249,6 +259,7 @@ try {
         ? sql`(${auditLogs.detail}->>'memberId') = ${memberId || "__no_member__"}`
         : sql`JSON_UNQUOTE(JSON_EXTRACT(${auditLogs.detail}, '$.memberId')) = ${memberId || "__no_member__"}`;
       await tx.delete(auditLogs).where(or(inArray(auditLogs.requirementId, fixtureIds.length ? fixtureIds : [-1]), eq(auditLogs.actorId, memberId || "__no_member__"), teamAuditRef, memberAuditRef));
+      await tx.delete(requirementEvents).where(eq(requirementEvents.teamId, teamId));
       if (memberId) await tx.delete(sessions).where(eq(sessions.memberId, memberId));
       await tx.delete(requirements).where(eq(requirements.teamId, teamId));
       if (memberId) await tx.delete(members).where(eq(members.id, memberId));

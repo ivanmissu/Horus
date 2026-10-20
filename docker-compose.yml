@@ -33,8 +33,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_NEW_WINDOW_DAYS: ${NEXT_PUBLIC_NEW_WINDOW_DAYS:-7}
     image: horus:local
     container_name: horus-app
     restart: unless-stopped
@@ -50,8 +48,6 @@ services:
       HORUS_INIT_OWNER_USERNAME: ${HORUS_INIT_OWNER_USERNAME:-admin}
       HORUS_INIT_OWNER_NAME: "${HORUS_INIT_OWNER_NAME:-团队负责人}"
       APP_URL: ${APP_URL:-http://localhost:3000}
-      HORUS_NEW_WINDOW_DAYS: ${HORUS_NEW_WINDOW_DAYS:-7}
-      NEXT_PUBLIC_NEW_WINDOW_DAYS: ${NEXT_PUBLIC_NEW_WINDOW_DAYS:-7}
       HORUS_DB_CONNECTION_LIMIT: ${HORUS_DB_CONNECTION_LIMIT:-10}
       # Container entrypoint switches (see docs/deployment-guide.md section 5, path D).
       # Set HORUS_DB_PUSH=false / HORUS_DB_INIT=false after initializing the schema

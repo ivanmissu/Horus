@@ -1,8 +1,8 @@
 #!/bin/sh
 # Horus 数据库初始化（幂等，可重复执行）：
-#   1) 同步 7 张表结构（drizzle-kit push，与 horus 容器启动时执行的逻辑一致）
+#   1) 同步 8 张表结构（drizzle-kit push，与 horus 容器启动时执行的逻辑一致）
 #   2) 创建初始负责人 + 通知设置默认行（db:init，已存在则保留、不重置密码）
-#   3) 校验 7 张表齐全，并打印负责人账号状态
+#   3) 校验 8 张表齐全，并打印负责人账号状态
 # 说明：horus 容器每次启动已自动完成 1)+2)，本脚本用于人工重跑/验收核查，
 #       或自动同步失败后修复重试。前置：docker compose 服务已启动（先执行 ./scripts/deploy.sh）。
 #       若已按部署手册第 5 节「路径 D」设了 HORUS_DB_PUSH=false（表由外部 SQL 维护），
@@ -38,7 +38,7 @@ docker compose exec -T mysql sh -c '
   " "$MYSQL_DATABASE"
 ' | tee /tmp/horus-init-check.txt
 
-grep -q '^tables=7$' /tmp/horus-init-check.txt || fail "表数量不是 7，请查看上方 drizzle-kit 输出排查"
+grep -q '^tables=8$' /tmp/horus-init-check.txt || fail "表数量不是 8，请查看上方 drizzle-kit 输出排查"
 grep -q '^owner=' /tmp/horus-init-check.txt || fail "未找到初始负责人（id=owner），请查看 db:init 输出排查"
 grep -q '^notification_settings=1$' /tmp/horus-init-check.txt || fail "通知设置默认行缺失，请查看 db:init 输出排查"
-echo "==> 数据库初始化校验通过：7 张表齐全，负责人与通知设置就绪。首次登录即可设置负责人密码。"
+echo "==> 数据库初始化校验通过：8 张表齐全，负责人与通知设置就绪。首次登录即可设置负责人密码。"

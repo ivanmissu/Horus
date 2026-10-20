@@ -6,7 +6,7 @@
 - **关联文档**：[《Horus 需求文档（V1）》](./horus-design.md)
 - **交付模式**：单兵 + AI 协同敏捷冲刺（5 个工作日上线）
 - **技术路线**：基于现有 `frontend/` Next.js 全栈原型直接生产化改造（Next.js App Router + Drizzle ORM + MySQL 8.0 + Docker 单实例容器化）
-- **执行状态（2026-10-16）**：M1–M4 代码已落地。M3 完成每日摘要数据库抢占、过期会话清理、新建窗口配置（`HORUS_NEW_WINDOW_DAYS` / `NEXT_PUBLIC_NEW_WINDOW_DAYS`，默认 7）及验收断言；M4 完成 standalone 构建、`frontend/Dockerfile`、`docker-compose.yml`、`.env.example` 与 [`docs/deployment-guide.md`](../deployment-guide.md)。M5 本地预检已执行：`npm ci`、lint、typecheck、domain 测试、build、生产默认鉴权测试均通过；后在沙箱安装 MySQL 5.7.29 测试实例，完成 7 表初始化、演示数据灌入、`test:digest`、`/api/health` 及读写烟测（详见记录）。MySQL 8.0 的 `drizzle-kit push`、Playwright、Docker 健康检查与内网/钉钉实测尚未执行，不可宣称已投产。现场逐项记录见 [M5 UAT 与投产记录](../m5-uat-checklist.md)。
+- **执行状态（2026-10-16）**：M1–M4 代码已落地。M3 完成每日摘要数据库抢占、过期会话清理与新建窗口配置（后续版本已改为自然周，相关环境变量已移除）及验收断言；M4 完成 standalone 构建、`frontend/Dockerfile`、`docker-compose.yml`、`.env.example` 与 [`docs/deployment-guide.md`](../deployment-guide.md)。M5 本地预检已执行：`npm ci`、lint、typecheck、domain 测试、build、生产默认鉴权测试均通过；后在沙箱安装 MySQL 5.7.29 测试实例，完成 7 表初始化（当前版本为 8 表）、演示数据灌入、`test:digest`、`/api/health` 及读写烟测（详见记录）。MySQL 8.0 的 `drizzle-kit push`、Playwright、Docker 健康检查与内网/钉钉实测尚未执行，不可宣称已投产。现场逐项记录见 [M5 UAT 与投产记录](../m5-uat-checklist.md)。
 
 ## 目录
 
@@ -40,7 +40,7 @@
 
 | 模块 | 对应 PRD | 现有代码位置 | 完成度 | 现状评估 |
 | :--- | :--- | :--- | :---: | :--- |
-| **首页·全部在途视图** | FR-1 | `src/components/requirement-views.tsx` (`Dashboard`) | 95% | 已实现全部未归档需求按团队分组折叠、近 7 天新建/卡点/高优逾期高亮与筛选、统计卡片与多维筛选 |
+| **首页·全部在途视图** | FR-1 | `src/components/requirement-views.tsx` (`Dashboard`) | 95% | 已实现全部未归档需求按团队分组折叠、本周新建/卡点/高优逾期高亮与筛选、统计卡片与多维筛选 |
 | **团队详情页** | FR-2 | `src/components/requirement-views.tsx` (`TeamPage`) | 95% | 已实现阶段分布柱状/漏斗图（点击可筛选）、在途列表筛选排序、归档历史查询 |
 | **需求全生命周期** | FR-3 | `src/components/requirement-dialogs.tsx` | 95% | 已实现新建、编辑、向前跳阶段推进、禁止回退、末阶段标记上线、手动归档、卡点标记/解除、取消归档、操作留痕 |
 | **阶段模板自定义** | FR-4 | `src/components/stages-settings.tsx` | 95% | 已实现团队级阶段增删、改名、拖拽/按钮调序，以及删除有需求阶段时的强制迁移校验 |
@@ -73,7 +73,7 @@
 #### Gap 3：PRD 开放点固化与管理小闭环补齐
 - **固化 PRD §8 开放点**：
   1. **需求负责人**：确认为“自由文本输入 + 活跃成员/历史负责人姓名自动补全建议（`<datalist>`）”，兼顾研发/测试不在系统账号体系内的实际情况。
-  2. **本周新建窗口**：默认 7 天，提取为可配置环境变量 `HORUS_NEW_WINDOW_DAYS=7`。
+  2. **本周新建窗口**：采用自然周（周一 00:00 Asia/Shanghai 起），不再提供窗口天数配置。
 - **新增「负责人重置成员密码」功能**：
   - PRD 明确不做自助找回密码。生产环境中 PM 遗忘密码时，由团队负责人在「成员与团队」列表中点击「重置密码」，清空该成员 `passwordHash` 并清除其已有登录会话，使其下次登录时重新进入“首次登录设置密码”流程。
 - **新增「编辑团队基础信息」功能**：
@@ -139,7 +139,7 @@ MySQL 数据层迁移  ───►  生产解耦与管理闭环  ───►  
 | 任务编号 | 任务名称 | 涉及文件 | 实施要点 |
 | :--- | :--- | :--- | :--- |
 | **T3.1** | 每日摘要调度并发与容错加固 | `frontend/src/lib/scheduler.ts`<br>`frontend/src/lib/notifications.ts` | 优化分钟级调度器，在定时触发时通过数据库条件更新抢占当日执行权，防止极端情况下重复发送；完善错误日志记录 |
-| **T3.2** | 开放点配置化收口 | `frontend/src/lib/domain.ts` | 支持通过 `NEXT_PUBLIC_NEW_WINDOW_DAYS`（默认 `7`）控制“本周新建”天数窗口，保持默认 7 天行为不变 |
+| **T3.2** | 开放点配置化收口 | `frontend/src/lib/domain.ts` | 「本周新建」已统一为自然周（周一 00:00 Asia/Shanghai），不再使用窗口天数变量 |
 | **T3.3** | 自动化验收测试适配与扩充 | `frontend/tests/acceptance.mjs` | 将测试脚本中的 PG JSON 清理语句改为 MySQL 语法；新增「重置成员密码」「编辑团队」接口与 UI 验收用例 |
 
 - **M3 验收标准（DoD）**：
@@ -258,9 +258,7 @@ HORUS_INIT_OWNER_NAME="团队负责人"
 # 系统对外访问地址（用于钉钉通知底部跳转链接兜底）
 APP_URL="http://horus.internal.company.com"
 
-# 「本周新建」滚动窗口，默认 7，允许 1–90。运行时 HORUS_* 优先，并下发给页面。
-HORUS_NEW_WINDOW_DAYS="7"
-NEXT_PUBLIC_NEW_WINDOW_DAYS="7"
+# 「本周新建」固定为自然周（周一 00:00 Asia/Shanghai），无需窗口变量。
 ```
 
 ---

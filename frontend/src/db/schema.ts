@@ -3,6 +3,7 @@ import * as postgresSchema from "./schema.postgres.ts";
 import { databaseDialect } from "./dialect.ts";
 
 export type Stage = mysqlSchema.Stage;
+export type { RequirementEventType } from "./schema.mysql.ts";
 
 // Runtime schema selection must match the Drizzle driver selected by DATABASE_URL.
 // The PostgreSQL model mirrors MySQL's inferred application types, so expose a
@@ -15,6 +16,7 @@ export const members = asCommonTable<typeof mysqlSchema.members>(activeSchema.me
 export const requirements = asCommonTable<typeof mysqlSchema.requirements>(activeSchema.requirements);
 export const sessions = asCommonTable<typeof mysqlSchema.sessions>(activeSchema.sessions);
 export const auditLogs = asCommonTable<typeof mysqlSchema.auditLogs>(activeSchema.auditLogs);
+export const requirementEvents = asCommonTable<typeof mysqlSchema.requirementEvents>(activeSchema.requirementEvents);
 export const notificationSettings = asCommonTable<typeof mysqlSchema.notificationSettings>(activeSchema.notificationSettings);
 export const notificationLogs = asCommonTable<typeof mysqlSchema.notificationLogs>(activeSchema.notificationLogs);
 

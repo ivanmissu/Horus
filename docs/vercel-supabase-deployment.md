@@ -43,11 +43,15 @@ DATABASE_URL='postgresql://…' npm run db:init
 | `HORUS_INIT_OWNER_USERNAME` | `admin` | 首次初始化负责人账号 |
 | `HORUS_INIT_OWNER_NAME` | `团队负责人` | 首次初始化负责人姓名 |
 | `APP_URL` | 最终的 `https://<project>.vercel.app` | 摘要链接兜底地址；自定义域名启用后同步更新 |
-| `HORUS_NEW_WINDOW_DAYS` | `7` | 「本周新建」窗口，范围 1–90 |
-| `NEXT_PUBLIC_NEW_WINDOW_DAYS` | `7` | 构建期兜底值，应与上一项一致 |
 | `HORUS_DB_CONNECTION_LIMIT` | `3` | 适配 Vercel 函数与 Supabase Pooler，避免连接数过多 |
 
+「本周新建」使用自然周（周一 00:00 Asia/Shanghai），无需窗口变量。
+
 上表是本路线的全部变量；每个变量的完整说明与默认值见[环境变量参考](./environment-variables.md)。不要设置 `HORUS_EMBEDDED_PREVIEW`。保存环境变量后触发一次新部署，使环境变量进入生产运行环境。
+
+## 3.1 升级到「需求统计」
+
+已有 Supabase 数据库升级到此版本时，先在 SQL Editor 执行 `deploy/postgres/03-stats-upgrade.sql`，再触发一次新部署。首次打开「需求统计」会自动回填历史事件；也可以手动运行 `cd frontend && DATABASE_URL=... npm run db:backfill`。历史上线/取消时间按 `entered_at` / `archived_at` 近似，卡点历史以审计日志为准，页面会标注估算。
 
 ## 4. 日报与运行边界
 

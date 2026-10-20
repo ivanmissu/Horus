@@ -19,8 +19,6 @@
 | `HORUS_DEMO_MODE` | ✅ | ✅ | ✅ | ✅ | ✅ | 生产必须 `false` |
 | `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | 可选 | 可选 | 可选 | 可选 | 可选 | 仅首次建负责人有效 |
 | `APP_URL` | 可选 | ✅ | ✅ | ✅ | ✅ | 对外地址，钉钉链接兜底 |
-| `HORUS_NEW_WINDOW_DAYS` | 可选 | ✅ | ✅ | ✅ | ✅ | 「本周新建」窗口（运行时） |
-| `NEXT_PUBLIC_NEW_WINDOW_DAYS` | ➖ | ✅ 构建期 | ✅ 构建期 | ✅ 构建期 | ✅ 构建期 | 构建期兜底，与上一项保持一致 |
 | `HORUS_PORT` | ➖ | 可选 | ➖ | ➖ | ➖ | 仅 Compose 宿主机端口映射 |
 | `HORUS_DB_CONNECTION_LIMIT` | 可选 | 可选 | 可选 | 可选 | ✅（默认 3） | 连接池大小 |
 | `HORUS_DB_PUSH` / `HORUS_DB_INIT` | ➖ | 可选 | 可选 | 可选 | 🚫 | 仅容器入口脚本读取，`npm run dev` 与 Vercel 不读 |
@@ -63,15 +61,15 @@
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `APP_URL` | `http://localhost:3000` | 用户实际访问的对外地址。钉钉摘要跳转链接的兜底（页面「通知设置」里另填的链接优先）。必须与实际访问协议/域名一致，不能写 `localhost` 给别人用；挂 HTTPS 后同步改成 `https://` |
-| `HORUS_NEW_WINDOW_DAYS` | `7` | 工作台「本周新建」滚动窗口天数，范围 1–90。运行时读取并下发给页面，改后重启生效 |
-| `NEXT_PUBLIC_NEW_WINDOW_DAYS` | `7` | 同一窗口的**构建期**兜底值（`--build-arg` 写进前端 bundle）。与上一项保持一致；只改运行时值即可更新页面数字，但客户端兜底要一致需重建镜像 |
+
+> 「本周新建」已改为自然周：每周一 00:00（Asia/Shanghai）重置，不再提供滚动窗口天数配置。需求统计页的生命周期与卡点事件写入 `horus_requirement_events`，旧库升级见各部署文档的「升级到需求统计」小节。
 
 ### 5. 连接池与容器入口开关
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `HORUS_DB_CONNECTION_LIMIT` | MySQL `10`；Vercel PostgreSQL `3` | 数据库连接池大小。单实例小团队别盲目调大（注意 MySQL 侧 `max_connections`） |
-| `HORUS_DB_PUSH` | `true` | 容器启动是否执行 `drizzle-kit push` 同步 7 张表。表已由外部 SQL 建好（`./scripts/init-sql.sh` / `deploy/mysql/*.sql`）时设 `false`：应用账号不再需要 DDL 权限，启动仍会校验 7 张表，缺表直接失败。接受 `false/0/no/off` |
+| `HORUS_DB_PUSH` | `true` | 容器启动是否执行 `drizzle-kit push` 同步 8 张表。表已由外部 SQL 建好（`./scripts/init-sql.sh` / `deploy/mysql/*.sql`）时设 `false`：应用账号不再需要 DDL 权限，启动仍会校验 8 张表，缺表直接失败。接受 `false/0/no/off` |
 | `HORUS_DB_INIT` | `true` | 容器启动是否幂等创建初始负责人与通知设置默认行。已执行 `02-init-owner.sql` 时可设 `false`，否则没有账号无法首次登录 |
 | `HORUS_DB_WAIT_TIMEOUT` | `90` | 等 MySQL 可查询的秒数上限 |
 | `HORUS_DB_STEP_TIMEOUT` | `180` | 单个数据库步骤的墙钟上限（`0` 不限）。防止「连不上 MySQL」时启动流程无限期挂住 |

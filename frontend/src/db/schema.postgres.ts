@@ -1,6 +1,7 @@
 import { boolean, index, integer, jsonb, pgTable, serial, text, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 
 export type Stage = { id: string; name: string };
+export type RequirementEventType = "created" | "released" | "cancelled" | "archived" | "blocked" | "unblocked";
 const isoNow = () => new Date().toISOString();
 
 export const teams = pgTable("horus_teams", {
@@ -47,6 +48,8 @@ export const requirements = pgTable("horus_requirements", {
   updatedBy: varchar("updated_by", { length: 64 }).references(() => members.id),
   createdAt: varchar("created_at", { length: 40 }).notNull().$defaultFn(isoNow),
   updatedAt: varchar("updated_at", { length: 40 }).notNull().$defaultFn(isoNow),
+  releasedAt: varchar("released_at", { length: 40 }),
+  cancelledAt: varchar("cancelled_at", { length: 40 }),
   archivedAt: varchar("archived_at", { length: 40 }),
 });
 
@@ -67,6 +70,26 @@ export const auditLogs = pgTable("horus_audit_logs", {
   createdAt: varchar("created_at", { length: 40 }).notNull().$defaultFn(isoNow),
 }, table => [
   index("horus_audit_logs_requirement_id_idx").on(table.requirementId),
+]);
+
+/**
+ * Append-only lifecycle log used by the statistics page.
+ * `estimated = true` marks events reconstructed from requirement timestamps
+ * (deployments before this table existed), never events written by the app.
+ */
+export const requirementEvents = pgTable("horus_requirement_events", {
+  id: serial("id").primaryKey(),
+  requirementId: integer("requirement_id").notNull(),
+  teamId: varchar("team_id", { length: 64 }).notNull(),
+  type: varchar("type", { length: 24 }).$type<RequirementEventType>().notNull(),
+  detail: jsonb("detail").$type<Record<string, unknown>>().notNull().$defaultFn(() => ({})),
+  estimated: boolean("estimated").notNull().default(false),
+  createdAt: varchar("created_at", { length: 40 }).notNull().$defaultFn(isoNow),
+}, table => [
+  index("horus_requirement_events_requirement_id_idx").on(table.requirementId),
+  index("horus_requirement_events_created_at_idx").on(table.createdAt),
+  index("horus_requirement_events_team_id_idx").on(table.teamId),
+  uniqueIndex("horus_requirement_events_unique").on(table.requirementId, table.type, table.createdAt),
 ]);
 
 export const notificationSettings = pgTable("horus_notification_settings", {
