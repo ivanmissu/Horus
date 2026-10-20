@@ -1,5 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { databaseDialect, db } from "./index.ts";
+import type { DatabaseDialect } from "./dialect.ts";
 import { auditLogs, requirementEvents, requirements } from "./schema.ts";
 import { buildBackfillEvents } from "../lib/events.ts";
 
@@ -21,10 +22,13 @@ export async function fillLifecycleTimestamps() {
  * Exact audit-log actions win; missing types fall back to requirement fields
  * and are stored with `estimated = true`.
  */
-export async function backfillRequirementEvents() {
+export async function backfillRequirementEvents(
+  database: Pick<typeof db, "select" | "insert"> = db,
+  dialect: DatabaseDialect = databaseDialect,
+) {
   const [allRequirements, logs] = await Promise.all([
-    db.select().from(requirements),
-    db.select({
+    database.select().from(requirements),
+    database.select({
       requirementId: auditLogs.requirementId,
       action: auditLogs.action,
       detail: auditLogs.detail,
@@ -35,9 +39,14 @@ export async function backfillRequirementEvents() {
   let inserted = 0;
   for (let index = 0; index < events.length; index += 200) {
     const chunk = events.slice(index, index + 200);
-    const statement = db.insert(requirementEvents).values(chunk);
-    if (databaseDialect === "postgres") await (statement as any).onConflictDoNothing();
-    else await (statement as any).ignore();
+    // Insert-if-missing is dialect-specific in Drizzle: PostgreSQL adds
+    // `onConflictDoNothing()` to the built statement, while MySQL selects
+    // `INSERT IGNORE` on the insert *builder* — `.ignore()` must be chained
+    // before `.values()`. The built statement has no `.ignore()` method, so the
+    // old `statement.ignore()` call threw "TypeError: n.ignore is not a
+    // function" and made every statistics request fail.
+    if (dialect === "postgres") await (database.insert(requirementEvents).values(chunk) as any).onConflictDoNothing();
+    else await database.insert(requirementEvents).ignore().values(chunk);
     inserted += chunk.length;
   }
   return { requirements: allRequirements.length, events: inserted };
