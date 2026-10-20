@@ -611,7 +611,11 @@ kubectl -n horus rollout undo deployment/horus
 ```
 
 - `HORUS_DB_PUSH=false`（附录 A 路线）时**没有任何自动同步**：发新版前确认该版本 `frontend/src/db/schema.ts` 有无变化，有则先备份、DBA 执行 DDL；或在能连库的机器上 `cd frontend && DATABASE_URL=... npm run db:push`（幂等）。
-- 升级到含「需求统计」的版本时，除 `db:push` 外还要确保旧库执行了 `deploy/mysql/04-stats-upgrade.sql`（PostgreSQL 为 `deploy/postgres/03-stats-upgrade.sql`）；随后 `cd frontend && DATABASE_URL=... npm run db:backfill` 回填历史事件。`HORUS_DB_PUSH=false` 时启动会校验 8 张表，缺 `horus_requirement_events` 会直接失败。
+- 升级到含「需求统计」的版本时，除 `db:push` 外还要确保旧库执行了 `deploy/mysql/04-stats-upgrade.sql`（PostgreSQL 为 `deploy/postgres/03-stats-upgrade.sql`）；随后回填历史事件：
+  ```bash
+  kubectl -n horus exec deploy/horus -- node --experimental-strip-types /opt/horus-migrate/src/db/backfill-events-cli.ts
+  ```
+  也可在能连库的机器上 `cd frontend && DATABASE_URL=... npm run db:backfill`；首次打开「需求统计」同样会自动回填，命令可重复执行。`HORUS_DB_PUSH=false` 时启动会校验 8 张表，缺 `horus_requirement_events` 会直接失败。
 - 升级改过表结构又只回滚镜像导致不兼容时，连升级前备份一起恢复（§9.5），不要只回滚一半。
 
 ### 9.3 钉钉摘要联调（可选）

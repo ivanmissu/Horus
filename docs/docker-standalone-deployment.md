@@ -104,8 +104,10 @@ docker run -d \
 
 ```bash
 docker exec -i horus-mysql mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < deploy/mysql/04-stats-upgrade.sql
-cd frontend && DATABASE_URL='mysql://...' npm run db:backfill
+docker exec horus-app node --experimental-strip-types /opt/horus-migrate/src/db/backfill-events-cli.ts
 ```
+
+回填在 `horus-app` 容器内执行，直接使用容器已有的 `DATABASE_URL`；首次打开「需求统计」也会自动回填，重复执行不会产生重复事件。
 
 新库直接执行 `01-schema.sql` 即可，不要执行升级脚本。升级后容器日志应出现 `MySQL schema ready (8 tables)`；历史上线/取消与卡点数据为近似回填，统计页会标注估算。
 
