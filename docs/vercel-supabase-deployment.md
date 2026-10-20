@@ -1,6 +1,8 @@
 # Horus · Vercel + Supabase PostgreSQL 部署
 
-Horus 支持 MySQL 8.0+ 和 PostgreSQL 15+。驱动与 Drizzle schema 由 `DATABASE_URL` 自动选择：`mysql://` 使用 MySQL，`postgres://` / `postgresql://` 使用 PostgreSQL。Docker Compose 仍默认带 MySQL；Vercel + Supabase 使用 PostgreSQL。
+- 关联文档：[环境变量参考](./environment-variables.md) · [Compose 部署手册](./deployment-guide.md) · [Kubernetes 部署](./kubernetes-deployment.md)
+- Horus 支持 MySQL 8.0+ 和 PostgreSQL 15+。驱动与 Drizzle schema 由 `DATABASE_URL` 自动选择：`mysql://` 使用 MySQL，`postgres://` / `postgresql://` 使用 PostgreSQL。Docker Compose 仍默认带 MySQL；Vercel + Supabase 使用 PostgreSQL。
+- 本路线**不适用**容器入口开关 `HORUS_DB_PUSH` / `HORUS_DB_INIT` / `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT`（仅镜像入口脚本读取，Vercel 没有这个入口）；也用不到 `MYSQL_*`、`HORUS_PORT`。
 
 ## 1. Vercel 项目
 
@@ -45,7 +47,7 @@ DATABASE_URL='postgresql://…' npm run db:init
 | `NEXT_PUBLIC_NEW_WINDOW_DAYS` | `7` | 构建期兜底值，应与上一项一致 |
 | `HORUS_DB_CONNECTION_LIMIT` | `3` | 适配 Vercel 函数与 Supabase Pooler，避免连接数过多 |
 
-不要设置 `HORUS_EMBEDDED_PREVIEW`。保存环境变量后触发一次新部署，使环境变量进入生产运行环境。
+上表是本路线的全部变量；每个变量的完整说明与默认值见[环境变量参考](./environment-variables.md)。不要设置 `HORUS_EMBEDDED_PREVIEW`。保存环境变量后触发一次新部署，使环境变量进入生产运行环境。
 
 ## 4. 日报与运行边界
 

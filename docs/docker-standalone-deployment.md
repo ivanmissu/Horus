@@ -1,12 +1,21 @@
 # Horus · 纯 Docker 部署（不用 Docker Compose）
 
-> 若由 DBA 提前用 SQL 建好表，可在下面第 4 步的 `docker run` 里加 `-e HORUS_DB_PUSH=false`（已跑 `02-init-owner.sql` 时再加 `-e HORUS_DB_INIT=false`），容器启动就不再跑 Drizzle。详见 [Kubernetes 部署说明](kubernetes-deployment.md) 第 1 节与 [`scripts/init-sql.sh`](../scripts/init-sql.sh)。
+- 关联文档：[环境变量参考](./environment-variables.md) · [Compose 部署手册](./deployment-guide.md) · [Kubernetes 部署](./kubernetes-deployment.md)
+- 已有 MySQL 实例、服务器没装 Compose v2，或希望手工掌控容器时，可以完全不用 `docker-compose.yml`，只用 `docker` 原生命令部署。镜像构建、启动初始化（等库 → 同步 7 张表 → 创建初始负责人）与 Compose 方式完全一致，差别只在编排、健康检查和运维命令要手写。
 
----
-
-已有 MySQL 实例、服务器没装 Compose v2，或希望手工掌控容器时，可以完全不用 `docker-compose.yml`，只用 `docker` 原生命令部署。镜像构建、启动初始化（等库 → 同步 7 张表 → 创建初始负责人）与 Compose 方式完全一致，差别只在编排、健康检查和运维命令要手写。
+> 若由 DBA 提前用 SQL 建好表，可在下面第 4 步的 `docker run` 里加 `-e HORUS_DB_PUSH=false`（已跑 `02-init-owner.sql` 时再加 `-e HORUS_DB_INIT=false`），容器启动就不再跑 Drizzle。详见 [Kubernetes 部署说明](kubernetes-deployment.md) 第 4 节与 [`scripts/init-sql.sh`](../scripts/init-sql.sh)。
 
 > **注意**：`scripts/deploy.sh`、`init-db.sh`、`backup.sh`、`restore.sh` 都基于 `docker compose`，本方式不适用，请直接使用下面给出的 `docker` 命令。以下命令均在仓库根目录执行。
+
+## 目录
+
+- [1. 构建镜像](#1-构建镜像)
+- [2. 创建网络与数据卷](#2-创建网络与数据卷)
+- [3. 启动 MySQL 容器](#3-启动-mysql-容器)
+- [4. 启动 Horus 容器](#4-启动-horus-容器)
+- [5. 验证与首次登录](#5-验证与首次登录)
+- [6. 日常运维（纯 Docker 命令）](#6-日常运维纯-docker-命令)
+- [7. 注意事项](#7-注意事项)
 
 ## 1. 构建镜像
 
@@ -81,6 +90,21 @@ docker run -d \
 - `DATABASE_URL` 的主机名必须是 `mysql`（或外部 MySQL 的实际可达地址），不能写 `127.0.0.1`——容器里的 `127.0.0.1` 指应用容器自身。
 - `HORUS_DEMO_MODE` 生产必须为 `false`；`APP_URL` 填同事实际打开的地址，不能写 `localhost`。
 - `--restart unless-stopped` 会在容器异常退出或宿主机重启后自动拉起；启动脚本会等 MySQL 就绪（最长 90 秒）后同步表结构并幂等创建初始负责人。
+
+**本路线环境变量一览**（完整说明与跨路线矩阵见[环境变量参考](./environment-variables.md)；MySQL 容器的 `MYSQL_*` 变量见第 3 步命令，属于 MySQL 镜像而非 Horus 应用）：
+
+| 变量 | 必填 | 默认 | 说明 |
+|---|---|---|---|
+| `DATABASE_URL` | ✅ | — | `mysql://horus:<密码>@mysql:3306/horus`；密码特殊字符需百分号编码 |
+| `HORUS_DEMO_MODE` | ✅ 生产固定 | `false` | 生产红线，禁止 `true` |
+| `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | 可选 | `admin` / `团队负责人` | 仅首次建负责人有效 |
+| `APP_URL` | ✅ | — | 同事实际打开的地址，钉钉链接兜底 |
+| `HORUS_NEW_WINDOW_DAYS` | 可选 | `7` | 「本周新建」窗口 1–90，运行时生效 |
+| `NEXT_PUBLIC_NEW_WINDOW_DAYS` | 构建期 | `7` | 构建期兜底，运行时 `-e` 不改已构建的前端；与上一项保持一致 |
+| `HORUS_DB_CONNECTION_LIMIT` | 可选 | `10` | 连接池上限 |
+| `HORUS_DB_PUSH` / `HORUS_DB_INIT` | 可选 | `true` | 表已由外部 SQL 建好时设 `false`（缺表仍拒绝启动）；仅容器入口读取 |
+| `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT` | 可选 | `90` / `180` | 等库秒数上限 / 单步墙钟上限 |
+| `TZ` | 可选 | `Asia/Shanghai` | 容器日志时区 |
 
 ## 5. 验证与首次登录
 

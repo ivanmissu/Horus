@@ -1,10 +1,26 @@
 # Horus 生产部署手册（Docker Compose · 内网单机版）
 
 - 适用版本：V1（Next.js 全栈单体 + MySQL 8.0，单实例容器，**不要扩容 app 副本**）
-- 关联文档：[需求文档](./specs/horus-design.md) · [项目计划](./specs/horus-project-plan.md) · [M5 上线签收清单](./m5-uat-checklist.md)
+- 关联文档：[环境变量参考](./environment-variables.md) · [Kubernetes 部署](./kubernetes-deployment.md) · [需求文档](./specs/horus-design.md) · [项目计划](./specs/horus-project-plan.md) · [M5 上线签收清单](./m5-uat-checklist.md)
 - 时区：应用与数据库均按 `Asia/Shanghai` 运行；业务时间以 ISO-8601 UTC 字符串存 `VARCHAR`，不依赖数据库时区转换。
 
 > **给运维同学的一句话**：把仓库拷到服务器 → 改一份 `.env` → 跑 `./scripts/deploy.sh` → 浏览器里给负责人设个密码，就能用了。下面是完整步骤和原理，出问题时按第 11 节排查。
+
+## 目录
+
+- [0. 速览：部署长什么样](#0-速览部署长什么样)
+- [1. 服务器准备（部署前检查）](#1-服务器准备部署前检查)
+- [2. 获取代码](#2-获取代码)
+- [3. 配置 .env（唯一需要改的文件）](#3-配置-env唯一需要改的文件)
+- [4. 一键启动](#4-一键启动)
+- [5. 数据库初始化（四条路径，按需选一）](#5-数据库初始化四条路径按需选一)
+- [6. 负责人首次登录](#6-负责人首次登录)
+- [7. 业务初始化](#7-业务初始化负责人在页面完成不用碰数据库)
+- [8. 钉钉每日异常摘要联调](#8-钉钉每日异常摘要联调)
+- [9. 日常运维](#9-日常运维)
+- [10. 离线交付](#10-离线交付服务器不能访问外网时)
+- [11. 故障排查](#11-故障排查)
+- [附录：环境变量](#附录环境变量)
 
 ---
 
@@ -91,6 +107,42 @@ ls   # 应能看到 docker-compose.yml、.env.example、frontend/、scripts/、d
 cp .env.example .env
 openssl rand -hex 18   # 执行两次，分别用作下面两个密码（只含十六进制字符，天然满足字符集要求）
 vi .env
+```
+
+**完整 `.env` 模板**（与仓库根目录 `.env.example` 等价，可直接对照逐项检查；每个变量的完整说明见[环境变量参考](./environment-variables.md)）：
+
+```dotenv
+# ── MySQL 容器变量（首次启动自动建库建账号；密码只用字母、数字、下划线）──
+MYSQL_ROOT_PASSWORD=<openssl 生成的随机串>     # root，仅容器内部运维用
+MYSQL_DATABASE=horus
+MYSQL_USER=horus
+MYSQL_PASSWORD=<另一个随机串>                  # 应用连库账号；含特殊字符会拼坏 DATABASE_URL
+
+# ── 应用核心 ─────────────────────────────────────────────
+# Compose 会自动拼成 mysql://horus:<MYSQL_PASSWORD>@mysql:3306/horus（mysql 是服务名），无需手改；
+# 下面这行只在本机 npm run dev 时才用得到
+DATABASE_URL=mysql://horus:change_me_horus@127.0.0.1:3306/horus
+
+# ── 运行模式与初始化 ─────────────────────────────────────
+HORUS_DEMO_MODE=false                          # 生产红线：true 会灌演示数据并允许免登录
+HORUS_INIT_OWNER_USERNAME=admin                # 仅首次建负责人有效，之后改这里不改已有账号
+HORUS_INIT_OWNER_NAME=团队负责人
+
+# ── 对外地址与业务行为 ───────────────────────────────────
+APP_URL=http://192.168.1.50:3000               # 同事实际打开的地址；钉钉摘要链接兜底（页面通知设置优先）
+HORUS_NEW_WINDOW_DAYS=7                        # 「本周新建」窗口 1–90，与下一项保持一致
+NEXT_PUBLIC_NEW_WINDOW_DAYS=7                  # 构建期兜底值，改了要重新构建
+
+# ── 端口与时区 ───────────────────────────────────────────
+HORUS_PORT=3000                                # 宿主机映射端口，被占用改这里
+HORUS_DB_CONNECTION_LIMIT=10                   # 连接池上限
+TZ=Asia/Shanghai
+
+# ── 可选：容器入口数据库开关（见第 5 节路径 D）──────────
+#HORUS_DB_PUSH=false                           # 表已由外部 SQL 建好时打开，应用账号不再需要 DDL
+#HORUS_DB_INIT=false                           # 已执行 02-init-owner.sql 时打开
+#HORUS_DB_WAIT_TIMEOUT=90                      # 等 MySQL 秒数上限
+#HORUS_DB_STEP_TIMEOUT=180                     # 单步墙钟上限（0 不限）
 ```
 
 必须改的项：
@@ -392,23 +444,14 @@ cp .env.example .env && vi .env        # 按第 3 节改密码与 APP_URL
 
 ---
 
-## 附录：环境变量全表
+## 附录：环境变量
 
-| 变量 | 默认 | 说明 |
-|---|---|---|
-| `MYSQL_ROOT_PASSWORD` | 必填 | MySQL root，仅容器内部 |
-| `MYSQL_DATABASE` / `MYSQL_USER` / `MYSQL_PASSWORD` | `horus` / `horus` / 必填 | 应用库与账号，密码仅字母数字下划线 |
-| `DATABASE_URL` | compose 内自动拼装 | 仅本机 `npm run dev` 时手填，指向 `127.0.0.1` |
-| `HORUS_DEMO_MODE` | `false` | 生产红线。只有显式 `true` 才灌演示数据并免登录 |
-| `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | `admin` / `团队负责人` | 仅无负责人时用于首次创建 |
-| `APP_URL` | `http://localhost:3000` | 对外访问地址，钉钉链接兜底（页面通知设置为准） |
-| `HORUS_NEW_WINDOW_DAYS` / `NEXT_PUBLIC_NEW_WINDOW_DAYS` | `7` / `7` | 「本周新建」窗口（1–90），运行时/构建兜底，保持一致 |
-| `HORUS_PORT` | `3000` | 宿主机映射端口 |
-| `HORUS_DB_CONNECTION_LIMIT` | `10` | MySQL 连接池上限 |
-| `HORUS_DB_PUSH` | `true` | 容器启动是否执行 `drizzle-kit push`。表已由外部 SQL 建好时设 `false`（路径 D） |
-| `HORUS_DB_INIT` | `true` | 容器启动是否执行 `db:init`（负责人 + 通知设置默认行）。已执行 `02-init-owner.sql` 时可设 `false` |
-| `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT` | `90` / `180` | 等 MySQL 秒数上限 / 每个数据库步骤墙钟上限（`0` 不限），仅容器入口脚本读取 |
-| `TZ` | `Asia/Shanghai` | 容器日志时区；业务时钟代码内固定上海时区 |
+上表之外 Compose 路线不涉及其他变量。**所有变量的完整说明、默认值、跨路线适用矩阵**（含 K8s、纯 Docker、Vercel 的差异，以及 `HORUS_DB_*` 容器开关、`HORUS_ENV_FILE`、预览模式变量等）统一见 [环境变量参考](./environment-variables.md)；Compose 路线的变量模板见第 3 节，模板文件为仓库根目录 `.env.example`。
 
-...[truncated 15820 chars]
-> `/api/health` 是无数据库访问的进程心跳，不代表业务或 MySQL 健康。Kubernetes 与外部 `.env` 挂载方式见 [K8s 部署说明](kubernetes-deployment.md)。
+三条与变量直接相关的红线，再强调一遍：
+
+- `HORUS_DEMO_MODE` 生产必须 `false`（`deploy.sh` 会拦截；确为受控演示需显式 `ALLOW_DEMO=1`，生产不要用）。
+- `MYSQL_PASSWORD` 只用字母、数字、下划线。
+- MySQL 容器只在数据卷为空时按 `MYSQL_*` 初始化账号，之后改 `.env` 里的密码**不会**同步库内账号，两边必须一致（不一致时第 11 节「Waiting for MySQL」一行）。
+
+> `/api/health` 是无数据库访问的进程心跳，不代表业务或 MySQL 健康。Kubernetes 部署（两条配置路线）见 [K8s 部署说明](kubernetes-deployment.md)。
