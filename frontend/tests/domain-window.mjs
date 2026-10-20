@@ -3,6 +3,7 @@ import {
   addMonths,
   canArchive,
   dateRangeLabel,
+  endOfShanghaiWeek,
   isArchived,
   isFocused,
   isInFlight,
@@ -10,6 +11,7 @@ import {
   shanghaiClock,
   startOfShanghaiMonth,
   startOfShanghaiWeek,
+  todayString,
 } from "../src/lib/domain.ts";
 
 const iso = value => new Date(value).toISOString();
@@ -24,6 +26,13 @@ assert.equal(iso(startOfShanghaiWeek("2026-10-25T16:00:00.000Z")), "2026-10-25T1
 assert.equal(iso(startOfShanghaiMonth(wednesday)), "2026-09-30T16:00:00.000Z");
 assert.equal(iso(addMonths(startOfShanghaiMonth(wednesday), -1)), "2026-08-31T16:00:00.000Z");
 assert.equal(dateRangeLabel("2026-10-19", "2026-10-25"), "10.19 – 10.25");
+assert.equal(todayString(endOfShanghaiWeek(wednesday)), "2026-10-25", "natural week ends on Sunday");
+assert.equal(todayString(endOfShanghaiWeek("2026-10-25T15:59:59.999Z")), "2026-10-25", "Sunday itself is the last day of its week");
+assert.equal(
+  dateRangeLabel(todayString(startOfShanghaiWeek(wednesday)), todayString(endOfShanghaiWeek(wednesday))),
+  "10.19 – 10.25",
+  "本周新建窗口 spans the full natural week (Monday..Sunday), not Monday..today",
+);
 
 const active = (createdAt, status = "active") => ({ status, createdAt, blocked: false, priority: "low", expectedDate: null });
 assert.equal(isNew(active("2026-10-18T16:00:00.000Z"), wednesday), true, "Monday 00:00 counts as this week");

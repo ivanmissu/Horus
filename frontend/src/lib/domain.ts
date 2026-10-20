@@ -33,6 +33,10 @@ export function startOfShanghaiWeek(now: string | Date = new Date()) {
   const weekday = new Date(`${todayString(now)}T00:00:00Z`).getUTCDay(); // 0 = Sunday
   return new Date(dayStart.getTime() - ((weekday + 6) % 7) * DAY_MS);
 }
+/** Sunday of the natural week containing `now` (weeks run Monday..Sunday). */
+export function endOfShanghaiWeek(now: string | Date = new Date()) {
+  return addDays(startOfShanghaiWeek(now), 6);
+}
 /** First day 00:00 (Asia/Shanghai) of the natural month containing `now`. */
 export function startOfShanghaiMonth(now: string | Date = new Date()) {
   return new Date(`${todayString(now).slice(0, 7)}-01T00:00:00+08:00`);
