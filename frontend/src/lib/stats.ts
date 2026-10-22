@@ -131,7 +131,10 @@ function windowMetrics(startMs: number, asOfMs: number, points: Point[], interva
   let archived = 0;
   let overdue = 0;
   let stock = 0;
+  let expectedDue = 0;
+  let expectedMet = 0;
   const asOfDate = todayString(new Date(asOfMs));
+  const windowStartDate = todayString(new Date(startMs));
   for (const point of points) {
     const inWindow = (time: number | null) => time !== null && time >= startMs && time <= asOfMs;
     if (inWindow(point.created)) created += 1;
@@ -144,8 +147,23 @@ function windowMetrics(startMs: number, asOfMs: number, points: Point[], interva
       && (point.released === null || point.released > asOfMs)
       && (point.cancelled === null || point.cancelled > asOfMs);
     if (activeAtEnd && point.requirement.priority === "high" && point.requirement.expectedDate && point.requirement.expectedDate < asOfDate) overdue += 1;
+    // On-time launch ratio, grouped by expected launch date. Cancelled
+    // requirements drop out entirely; dates not yet arrived stay uncounted
+    // even when the requirement already shipped early.
+    const isCancelled = point.cancelled !== null || point.requirement.status === "cancelled";
+    const expected = point.requirement.expectedDate;
+    if (expected && !isCancelled && expected >= windowStartDate && expected <= asOfDate) {
+      expectedDue += 1;
+      const releasedDate = point.released === null ? null : todayString(new Date(point.released));
+      if (releasedDate !== null && releasedDate <= expected) expectedMet += 1;
+    }
   }
-  return { created, released, cancelled, blocked, archived, overdue, stock, net: created - cancelled - archived, releaseRatio: created ? released / created : null };
+  return {
+    created, released, cancelled, blocked, archived, overdue, stock,
+    net: created - cancelled - archived,
+    releaseRatio: created ? released / created : null,
+    expectedDue, expectedMet, expectedRatio: expectedDue ? expectedMet / expectedDue : null,
+  };
 }
 
 function toBucket(
@@ -191,8 +209,12 @@ export function buildStats(input: StatsInput): StatsData {
       archived: metrics.archived,
       overdue: metrics.overdue,
       stock: metrics.stock,
+      expectedDue: metrics.expectedDue,
+      expectedMet: metrics.expectedMet,
+      expectedRatio: metrics.expectedRatio,
     };
   }).sort((a, b) => b.created - a.created || a.name.localeCompare(b.name, "zh-CN"));
+  const missingExpected = requirements.filter(item => item.status !== "cancelled" && !item.expectedDate).length;
   return {
     granularity,
     periods,
@@ -204,6 +226,7 @@ export function buildStats(input: StatsInput): StatsData {
     buckets,
     range,
     teams: teamRows,
+    missingExpected,
     hasEstimates: lifecycleEstimates || blockEstimates || input.events.some(event => event.estimated),
   };
 }

@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlarmClock, Archive, ArrowDownRight, ArrowUpRight, Ban, BarChart3, CalendarDays, CircleHelp, CirclePause, Info, Layers3, Minus, RefreshCw, Rocket, Sparkles } from "lucide-react";
+import { AlarmClock, Archive, ArrowDownRight, ArrowUpRight, Ban, BarChart3, CalendarDays, CircleHelp, CirclePause, Info, Layers3, Minus, RefreshCw, Rocket, Sparkles, Target } from "lucide-react";
 import { PageHeading } from "./requirement-views";
 import { useWorkspace } from "./workspace-context";
 import { Badge, EmptyState, Modal, Select, Spinner } from "./ui";
@@ -19,6 +19,16 @@ function Delta({ value, goodWhenUp = true }: { value: number | null; goodWhenUp?
   return <span className={`stats-delta ${good ? "good" : "bad"}`}>{up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}{up ? "+" : ""}{value}</span>;
 }
 
+type ChartHover = { index: number; x: number; y: number };
+type ChartTipRow = { label: string; value: number; tone: string };
+
+function ChartTipBox({ hover, title, rows }: { hover: ChartHover; title: string; rows: ChartTipRow[] }) {
+  return <div className={`stats-chart-tooltip ${hover.y < 110 ? "below" : ""}`} style={{ left: hover.x, top: hover.y }} role="status">
+    <strong>{title}</strong>
+    {rows.map(row => <span key={row.label}><i className={row.tone} />{row.label}<b>{row.value}</b></span>)}
+  </div>;
+}
+
 function BarChart({ buckets }: { buckets: StatsBucket[] }) {
   const width = 820;
   const height = 270;
@@ -30,28 +40,49 @@ function BarChart({ buckets }: { buckets: StatsBucket[] }) {
   const top = step * 4;
   const groupWidth = plotWidth / Math.max(1, buckets.length);
   const barWidth = Math.max(4, Math.min(15, (groupWidth - 10) / 3));
-  return <svg className="stats-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="需求新建、上线与取消趋势">
-    {[0, 1, 2, 3, 4].map(index => {
-      const y = padding.top + plotHeight - (plotHeight * index) / 4;
-      return <g key={index}>
-        <line className="stats-grid-line" x1={padding.left} x2={width - padding.right} y1={y} y2={y} />
-        <text className="stats-axis-text" x={padding.left - 8} y={y + 4} textAnchor="end">{Math.round((top * index) / 4)}</text>
-      </g>;
-    })}
-    {buckets.map((bucket, index) => {
-      const center = padding.left + index * groupWidth + groupWidth / 2;
-      const values = [bucket.created, bucket.released, bucket.cancelled];
-      return <g key={bucket.key}>
-        <title>{`${bucket.label}\n新建 ${bucket.created} · 上线 ${bucket.released} · 取消 ${bucket.cancelled}`}</title>
-        {values.map((value, series) => {
-          const barHeight = (value / top) * plotHeight;
-          const x = center - barWidth * 1.5 - 2 + series * (barWidth + 2);
-          return <rect key={series} className={`stats-bar stats-bar-${series}`} x={x} y={padding.top + plotHeight - barHeight} width={barWidth} height={barHeight} rx={2} />;
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<ChartHover | null>(null);
+  const track = (event: { clientX: number; clientY: number }, index: number) => {
+    const box = wrapRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const x = Math.min(Math.max(event.clientX - box.left, 86), Math.max(86, box.width - 86));
+    setHover({ index, x, y: event.clientY - box.top });
+  };
+  return <div className="stats-chart-wrap" ref={wrapRef} onMouseLeave={() => setHover(null)}>
+    <div className="stats-chart-scroll">
+      <svg className="stats-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="需求新建、上线与取消趋势">
+        {[0, 1, 2, 3, 4].map(index => {
+          const y = padding.top + plotHeight - (plotHeight * index) / 4;
+          return <g key={index}>
+            <line className="stats-grid-line" x1={padding.left} x2={width - padding.right} y1={y} y2={y} />
+            <text className="stats-axis-text" x={padding.left - 8} y={y + 4} textAnchor="end">{Math.round((top * index) / 4)}</text>
+          </g>;
         })}
-        <text className={`stats-axis-text ${bucket.current ? "current" : ""}`} x={center} y={height - 14} textAnchor="middle">{bucket.shortLabel}</text>
-      </g>;
-    })}
-  </svg>;
+        {hover && <rect className="stats-hover-band" x={padding.left + hover.index * groupWidth} y={0} width={groupWidth} height={height} />}
+        {buckets.map((bucket, index) => {
+          const center = padding.left + index * groupWidth + groupWidth / 2;
+          const values = [bucket.created, bucket.released, bucket.cancelled];
+          return <g key={bucket.key}>
+            {values.map((value, series) => {
+              const barHeight = (value / top) * plotHeight;
+              const x = center - barWidth * 1.5 - 2 + series * (barWidth + 2);
+              return <rect key={series} className={`stats-bar stats-bar-${series}`} x={x} y={padding.top + plotHeight - barHeight} width={barWidth} height={barHeight} rx={2} />;
+            })}
+            <text className={`stats-axis-text ${bucket.current ? "current" : ""}`} x={center} y={height - 14} textAnchor="middle">{bucket.shortLabel}</text>
+          </g>;
+        })}
+        {buckets.map((bucket, index) => <rect
+          key={`hit-${bucket.key}`} x={padding.left + index * groupWidth} y={0} width={groupWidth} height={height} fill="transparent"
+          onMouseEnter={event => track(event, index)} onMouseMove={event => track(event, index)}
+        />)}
+      </svg>
+    </div>
+    {hover && <ChartTipBox hover={hover} title={buckets[hover.index].label} rows={[
+      { label: "新建", value: buckets[hover.index].created, tone: "purple" },
+      { label: "上线", value: buckets[hover.index].released, tone: "teal" },
+      { label: "取消", value: buckets[hover.index].cancelled, tone: "red" },
+    ]} />}
+  </div>;
 }
 
 function StockChart({ buckets }: { buckets: StatsBucket[] }) {
@@ -65,29 +96,49 @@ function StockChart({ buckets }: { buckets: StatsBucket[] }) {
   const top = step * 3;
   const x = (index: number) => buckets.length <= 1 ? padding.left + plotWidth / 2 : padding.left + (plotWidth * index) / (buckets.length - 1);
   const y = (value: number) => padding.top + plotHeight - (value / top) * plotHeight;
+  const bandWidth = buckets.length <= 1 ? plotWidth : plotWidth / (buckets.length - 1);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<ChartHover | null>(null);
+  const track = (event: { clientX: number; clientY: number }, index: number) => {
+    const box = wrapRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const x = Math.min(Math.max(event.clientX - box.left, 86), Math.max(86, box.width - 86));
+    setHover({ index, x, y: event.clientY - box.top });
+  };
   const series = [
     { key: "stock" as const, label: "在途存量", tone: "purple" },
     { key: "blocked" as const, label: "卡点需求", tone: "orange" },
   ];
-  return <svg className="stats-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="在途存量与卡点趋势">
-    {[0, 1, 2, 3].map(index => {
-      const lineY = padding.top + plotHeight - (plotHeight * index) / 3;
-      return <g key={index}>
-        <line className="stats-grid-line" x1={padding.left} x2={width - padding.right} y1={lineY} y2={lineY} />
-        <text className="stats-axis-text" x={padding.left - 8} y={lineY + 4} textAnchor="end">{Math.round((top * index) / 3)}</text>
-      </g>;
-    })}
-    {series.map(item => {
-      const path = buckets.map((bucket, index) => `${index ? "L" : "M"}${x(index)},${y(bucket[item.key])}`).join(" ");
-      return <g key={item.key}>
-        <path className={`stats-line stats-line-${item.tone}`} d={path} />
-        {buckets.map((bucket, index) => <g key={bucket.key}>
-          <circle className={`stats-point stats-point-${item.tone}`} cx={x(index)} cy={y(bucket[item.key])} r={2.6}><title>{`${bucket.label} · ${item.label} ${bucket[item.key]}`}</title></circle>
-        </g>)}
-      </g>;
-    })}
-    {buckets.map((bucket, index) => <text key={bucket.key} className={`stats-axis-text ${bucket.current ? "current" : ""}`} x={x(index)} y={height - 10} textAnchor="middle">{bucket.shortLabel}</text>)}
-  </svg>;
+  return <div className="stats-chart-wrap" ref={wrapRef} onMouseLeave={() => setHover(null)}>
+    <div className="stats-chart-scroll">
+      <svg className="stats-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="在途存量与卡点趋势">
+        {[0, 1, 2, 3].map(index => {
+          const lineY = padding.top + plotHeight - (plotHeight * index) / 3;
+          return <g key={index}>
+            <line className="stats-grid-line" x1={padding.left} x2={width - padding.right} y1={lineY} y2={lineY} />
+            <text className="stats-axis-text" x={padding.left - 8} y={lineY + 4} textAnchor="end">{Math.round((top * index) / 3)}</text>
+          </g>;
+        })}
+        {hover && <rect className="stats-hover-band" x={x(hover.index) - bandWidth / 2} y={0} width={bandWidth} height={height} />}
+        {series.map(item => {
+          const path = buckets.map((bucket, index) => `${index ? "L" : "M"}${x(index)},${y(bucket[item.key])}`).join(" ");
+          return <g key={item.key}>
+            <path className={`stats-line stats-line-${item.tone}`} d={path} />
+            {buckets.map((bucket, index) => <circle key={bucket.key} className={`stats-point stats-point-${item.tone}`} cx={x(index)} cy={y(bucket[item.key])} r={2.6} />)}
+          </g>;
+        })}
+        {buckets.map((bucket, index) => <text key={bucket.key} className={`stats-axis-text ${bucket.current ? "current" : ""}`} x={x(index)} y={height - 10} textAnchor="middle">{bucket.shortLabel}</text>)}
+        {buckets.map((bucket, index) => <rect
+          key={`hit-${bucket.key}`} x={x(index) - bandWidth / 2} y={0} width={bandWidth} height={height} fill="transparent"
+          onMouseEnter={event => track(event, index)} onMouseMove={event => track(event, index)}
+        />)}
+      </svg>
+    </div>
+    {hover && <ChartTipBox hover={hover} title={buckets[hover.index].label} rows={[
+      { label: "在途存量", value: buckets[hover.index].stock, tone: "purple" },
+      { label: "卡点需求", value: buckets[hover.index].blocked, tone: "orange" },
+    ]} />}
+  </div>;
 }
 
 export function StatsPage() {
@@ -154,6 +205,7 @@ export function StatsPage() {
     { label: "净增", value: `${current.net > 0 ? "+" : ""}${current.net}`, hint: "新建 − 取消 − 归档", icon: BarChart3, tone: current.net < 0 ? "red" : "teal" },
     { label: "本期归档", value: count(current.archived), hint: "上线后归档", icon: Archive, tone: "teal" },
     { label: "上线 / 新建", value: ratioText(current.releaseRatio), hint: "大于 100% 表示在消化存量", icon: ArrowUpRight, tone: "blue" },
+    { label: "预期达成率", value: ratioText(current.expectedRatio), hint: `按期 ${current.expectedMet} / 到期 ${current.expectedDue}${stats && stats.missingExpected > 0 ? ` · 未填 ${stats.missingExpected}` : ""}`, icon: Target, tone: "blue" },
     { label: "高优逾期", value: count(current.overdue), hint: "截至现在仍未上线", icon: AlarmClock, tone: current.overdue ? "red" : "orange" },
   ] : [];
 
@@ -206,6 +258,7 @@ export function StatsPage() {
                 <div><span className="stats-read-icon blue"><Sparkles size={15} /></span><p><strong>{current.created} 项新建</strong>，同期有 {current.released} 项推进到上线。</p></div>
                 <div><span className="stats-read-icon orange"><CirclePause size={15} /></span><p><strong>{current.blocked} 项需求</strong>在期内被卡住过，期末仍有 {current.overdue} 项高优逾期。</p></div>
                 <div><span className="stats-read-icon teal"><Layers3 size={15} /></span><p>在途存量 <strong>{current.stock} 项</strong>，本期净增 <strong>{current.net > 0 ? "+" : ""}{current.net}</strong>。</p></div>
+                <div><span className="stats-read-icon blue"><Target size={15} /></span><p>本期 <strong>{current.expectedDue} 项期望日到期</strong>，其中 <strong>{current.expectedMet} 项按期上线</strong>。</p></div>
               </div>
               <button className="text-button stats-note-link" onClick={() => setRules(true)}>查看完整口径<ArrowUpRight size={13} /></button>
             </section>
@@ -214,23 +267,27 @@ export function StatsPage() {
           <section className="card stats-table-card">
             <div className="table-card-heading"><div><h2>团队对比<span className="small-label">{stats.range.label}</span></h2><p>区间累计；期末在途与逾期为当前值</p></div><span className="subtle">共 {stats.teams.length} 个团队</span></div>
             <div className="management-table-scroll"><table className="stats-table">
-              <thead><tr><th>团队</th><th>新建</th><th>上线</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>高优逾期</th></tr></thead>
+              <thead><tr><th>团队</th><th>新建</th><th>上线</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>高优逾期</th><th>预期达成率</th></tr></thead>
               <tbody>{stats.teams.map(team => <tr key={team.teamId}>
                 <td><span className={`stats-team-dot ${team.color}`} />{team.name}</td>
                 <td>{team.created}</td><td>{team.released}</td><td>{team.cancelled}</td><td>{team.blocked}</td><td>{team.archived}</td><td>{team.stock}</td><td className={team.overdue ? "text-red" : ""}>{team.overdue}</td>
-              </tr>)}{!stats.teams.length && <tr><td colSpan={8} className="stats-empty-cell">当前范围内没有团队数据</td></tr>}</tbody>
-              <tfoot><tr><td>合计</td><td>{stats.range.created}</td><td>{stats.range.released}</td><td>{stats.range.cancelled}</td><td>{stats.range.blocked}</td><td>{stats.range.archived}</td><td>{stats.range.stock}</td><td>{stats.range.overdue}</td></tr></tfoot>
+                <td title={`按期 ${team.expectedMet} / 期望日已到 ${team.expectedDue}`}>{ratioText(team.expectedRatio)}</td>
+              </tr>)}{!stats.teams.length && <tr><td colSpan={9} className="stats-empty-cell">当前范围内没有团队数据</td></tr>}</tbody>
+              <tfoot><tr><td>合计</td><td>{stats.range.created}</td><td>{stats.range.released}</td><td>{stats.range.cancelled}</td><td>{stats.range.blocked}</td><td>{stats.range.archived}</td><td>{stats.range.stock}</td><td>{stats.range.overdue}</td>
+                <td title={`按期 ${stats.range.expectedMet} / 期望日已到 ${stats.range.expectedDue}`}>{ratioText(stats.range.expectedRatio)}</td>
+              </tr></tfoot>
             </table></div>
           </section>
 
           <section className="card stats-table-card">
-            <div className="table-card-heading"><div><h2>周期明细<span className="small-label">最近在前</span></h2><p>逐期核对流入、流出与存量变化</p></div><span className="subtle">上线 / 新建 = 当期上线数 ÷ 当期新建数</span></div>
+            <div className="table-card-heading"><div><h2>周期明细<span className="small-label">最近在前</span></h2><p>逐期核对流入、流出与存量变化</p></div><span className="subtle">上线 / 新建 = 当期上线数 ÷ 当期新建数；预期达成率 = 按期上线数 ÷ 期望日已到数{stats.missingExpected > 0 ? `；另有 ${stats.missingExpected} 项未填期望日期未计入` : ""}</span></div>
             <div className="management-table-scroll"><table className="stats-table stats-period-table">
-              <thead><tr><th>周期</th><th>新建</th><th>上线</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>净增</th><th>上线 / 新建</th></tr></thead>
+              <thead><tr><th>周期</th><th>新建</th><th>上线</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>净增</th><th>上线 / 新建</th><th>预期达成率</th></tr></thead>
               <tbody>{[...stats.buckets].reverse().map(bucket => <tr key={bucket.key} className={bucket.current ? "current" : ""}>
                 <td><span>{bucket.label}</span>{bucket.current && <Badge tone="blue">进行中</Badge>}</td>
                 <td>{bucket.created}</td><td>{bucket.released}</td><td>{bucket.cancelled}</td><td>{bucket.blocked}</td><td>{bucket.archived}</td><td>{bucket.stock}</td>
                 <td className={bucket.net < 0 ? "text-red" : ""}>{bucket.net > 0 ? "+" : ""}{bucket.net}</td><td>{ratioText(bucket.releaseRatio)}</td>
+                <td title={`按期 ${bucket.expectedMet} / 期望日已到 ${bucket.expectedDue}`}>{ratioText(bucket.expectedRatio)}</td>
               </tr>)}</tbody>
             </table></div>
           </section>
@@ -245,6 +302,7 @@ export function StatsPage() {
         <div><Badge tone="orange">卡点量</Badge><p>该周期内至少被标记过一次卡点的不同需求数；同一需求多次卡点只计一次，跨周期持续卡点会分别计入每个周期。</p></div>
         <div><Badge tone="neutral">在途存量 / 净增</Badge><p>在途 = 尚未归档的需求（含已上线待归档）。净增 = 当期新建 − 取消 − 归档，反映在途规模的变化。</p></div>
         <div><Badge tone="green">上线 / 新建</Badge><p>当期上线数 ÷ 当期新建数。大于 100% 说明当期交付量超过新增量，正在消化历史存量。</p></div>
+        <div><Badge tone="teal">预期达成率</Badge><p>按期望上线日期归集：期望日落在该周期、且期望日已到的需求（不含已取消）中，实际上线日不晚于期望上线日（当天算按期）的占比。期望日未到的（含已提前上线）暂不计入，到期后计入；期望日已过仍未上线算未达成。{stats?.missingExpected ? `当前范围内有 ${stats.missingExpected} 项未填期望上线日期，不计入该比率。` : "未填期望上线日期的需求不计入该比率。"}</p></div>
         <div><Badge tone="amber">高优逾期</Badge><p>截至周期末仍处于推进中、优先级为高、且期望上线日期早于周期末的需求；未填期望上线日期的不计入。</p></div>
       </div>
       <div className="guide-note"><Info size={17} /><p>上线、取消与卡点事件自本版本起精确记录。更早的历史数据由创建、上线、取消时间及审计日志回填，页面标记为估算；卡点历史在事件记录启用前可能不完整。</p></div>

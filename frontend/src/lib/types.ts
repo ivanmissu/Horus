@@ -46,6 +46,12 @@ export type StatsBucket = {
   net: number;
   /** released / created, or null when nothing was created. */
   releaseRatio: number | null;
+  /** Non-cancelled requirements whose expected launch date falls in the bucket and has already arrived (as of the bucket end / now). */
+  expectedDue: number;
+  /** Of `expectedDue`, those actually launched on or before their expected launch date (launch day itself counts). */
+  expectedMet: number;
+  /** expectedMet / expectedDue, or null when nothing is due yet. */
+  expectedRatio: number | null;
 };
 export type StatsTeamRow = {
   teamId: string;
@@ -58,6 +64,10 @@ export type StatsTeamRow = {
   archived: number;
   overdue: number;
   stock: number;
+  /** On-time launch metrics over the visible range, per team. */
+  expectedDue: number;
+  expectedMet: number;
+  expectedRatio: number | null;
 };
 export type StatsData = {
   granularity: StatsGranularity;
@@ -71,6 +81,8 @@ export type StatsData = {
   /** Aggregate flows across the whole visible range, with stock/overdue as of now. */
   range: StatsBucket;
   teams: StatsTeamRow[];
+  /** In-scope non-cancelled requirements without an expected launch date; excluded from expectedRatio. */
+  missingExpected: number;
   /** True when historical lifecycle or blocker data had to be reconstructed. */
   hasEstimates: boolean;
 };
