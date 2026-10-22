@@ -181,7 +181,7 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 .stats-delta.good{color:#719c82;background:#eef7f1}
 .stats-delta.bad{color:#c17f79;background:#fdf0ee}
 .stats-delta.flat{color:#a0a3b2;background:#f3f4f8}
-.stats-mini-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:14px}
+.stats-mini-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-top:14px}
 .stats-mini-card{display:flex;gap:10px;align-items:flex-start;padding:13px 14px;background:#fff;border:1px solid #e7e9f0;border-radius:9px;box-shadow:0 2px 4px #24243202;min-width:0}
 .stats-mini-icon{display:inline-flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:8px;flex-shrink:0;background:#f2eff9;color:#9a83d3}
 .stats-mini-teal .stats-mini-icon{background:#eaf5ef;color:#82a690}
@@ -194,7 +194,19 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 .stats-mini-card small{font-size:9px;line-height:1.45;color:#aeb1be;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stats-chart-card{margin-top:18px;padding-bottom:6px}
 .stats-chart-card .table-card-heading{align-items:flex-start}
+.stats-chart-wrap{position:relative}
 .stats-chart{display:block;width:100%;height:auto;padding:8px 14px 2px}
+.stats-hover-band{fill:#8069cd0d}
+.stats-chart-tooltip{position:absolute;z-index:6;pointer-events:none;display:flex;flex-direction:column;gap:5px;min-width:118px;padding:9px 11px;background:#fff;border:1px solid #e7e9f0;border-radius:9px;box-shadow:0 8px 20px #24243218;transform:translate(-50%,calc(-100% - 14px));white-space:nowrap}
+.stats-chart-tooltip.below{transform:translate(-50%,14px)}
+.stats-chart-tooltip strong{font-size:11px;font-weight:600;color:#4c4859}
+.stats-chart-tooltip span{display:flex;align-items:center;gap:7px;font-size:10.5px;color:#8f92a2}
+.stats-chart-tooltip span i{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.stats-chart-tooltip span i.purple{background:#a892e0}
+.stats-chart-tooltip span i.teal{background:#8fb5a1}
+.stats-chart-tooltip span i.red{background:#dc9a94}
+.stats-chart-tooltip span i.orange{background:#d2a76b}
+.stats-chart-tooltip span b{margin-left:auto;padding-left:12px;font-size:11px;font-weight:620;color:#4c4859;font-variant-numeric:tabular-nums}
 .stats-grid-line{stroke:#eef0f5;stroke-width:1}
 .stats-axis-text{fill:#a6a9b7;font-size:9px;font-variant-numeric:tabular-nums}
 .stats-axis-text.current{fill:#8069cd;font-weight:600}

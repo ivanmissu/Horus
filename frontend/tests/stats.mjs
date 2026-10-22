@@ -60,6 +60,20 @@ assert.equal(weekly.teams.find(team => team.teamId === "product").created, 2);
 assert.equal(weekly.teams.find(team => team.teamId === "data").created, 1);
 assert.equal(weekly.hasEstimates, false);
 
+// 预期达成率（按期望上线日归集）：req4 期望 2026-10-10、未上线 → 上周已到期未达成
+assert.equal(weekly.missingExpected, 4, "cancelled requirement is excluded from the missing-expected count");
+assert.equal(weekly.current.expectedDue, 0);
+assert.equal(weekly.current.expectedMet, 0);
+assert.equal(weekly.current.expectedRatio, null);
+assert.equal(weekly.buckets.find(bucket => bucket.key === "2026-10-05").expectedDue, 1);
+assert.equal(weekly.buckets.find(bucket => bucket.key === "2026-10-05").expectedMet, 0);
+assert.equal(weekly.buckets.find(bucket => bucket.key === "2026-10-05").expectedRatio, 0);
+assert.equal(weekly.range.expectedDue, 1);
+assert.equal(weekly.range.expectedMet, 0);
+assert.equal(weekly.range.expectedRatio, 0);
+assert.equal(weekly.teams.find(team => team.teamId === "product").expectedDue, 1);
+assert.equal(weekly.teams.find(team => team.teamId === "product").expectedRatio, 0);
+
 const monthly = buildStats({ requirements, events, teams, now, granularity: "month", periods: 6 });
 assert.equal(monthly.buckets.length, 6);
 assert.equal(monthly.current.key, "2026-10");
@@ -78,6 +92,44 @@ const legacy = [{ ...requirements[3], releasedAt: null, status: "released", ente
 const derived = deriveEventsFromRequirements([...requirements, ...legacy]);
 assert.equal(derived.find(event => event.requirementId === 6 && event.type === "blocked").estimated, true);
 assert.equal(derived.find(event => event.requirementId === 2 && event.type === "released").estimated, false);
+
+// ── 预期达成率口径边界 ────────────────────────────────────────────────────
+const expRequirements = [];
+function addExp(values) {
+  const id = expRequirements.length + 1;
+  expRequirements.push({
+    id, teamId: "platform", title: `预期需求 ${id}`, description: "", priority: "medium", owner: "",
+    expectedDate: null, stageId: "review", enteredAt: values.createdAt, blocked: false, blockReason: "",
+    status: "active", source: "手工录入", externalId: null, createdBy: null, updatedBy: null,
+    createdAt: values.createdAt, updatedAt: values.createdAt, releasedAt: null, cancelledAt: null, archivedAt: null,
+    ...values,
+  });
+}
+addExp({ expectedDate: "2026-10-20", status: "released", stageId: "released", releasedAt: "2026-10-19T02:00:00.000Z", createdAt: "2026-10-01T02:00:00.000Z" }); // 按期上线
+addExp({ expectedDate: "2026-10-20", status: "released", stageId: "released", releasedAt: "2026-10-21T02:00:00.000Z", createdAt: "2026-10-01T02:00:00.000Z" }); // 晚于期望日上线
+addExp({ expectedDate: "2026-10-20", createdAt: "2026-10-01T02:00:00.000Z" }); // 期望日已过仍未上线
+addExp({ expectedDate: "2026-10-21", status: "released", stageId: "released", releasedAt: "2026-10-20T02:00:00.000Z", createdAt: "2026-10-01T02:00:00.000Z" }); // 期望日当天到期，提前一天上线
+addExp({ expectedDate: "2026-10-25", status: "released", stageId: "released", releasedAt: "2026-10-19T02:00:00.000Z", createdAt: "2026-10-01T02:00:00.000Z" }); // 提前上线但期望日未到 → 暂不计入
+addExp({ expectedDate: "2026-10-25", createdAt: "2026-10-01T02:00:00.000Z" }); // 期望日未到 → 暂不计入
+addExp({ expectedDate: "2026-10-20", status: "cancelled", stageId: "design", cancelledAt: "2026-10-19T02:00:00.000Z", archivedAt: "2026-10-19T02:00:00.000Z", createdAt: "2026-10-01T02:00:00.000Z" }); // 已取消 → 完全排除
+addExp({ createdAt: "2026-10-01T02:00:00.000Z" }); // 未填期望日期 → 只计未填数
+addExp({ expectedDate: "2026-09-30", createdAt: "2026-09-01T02:00:00.000Z" }); // 上上周期望日到期，未上线
+addExp({ expectedDate: "2026-05-01", createdAt: "2026-04-01T02:00:00.000Z" }); // 期望日早于可见区间 → 不计入
+addExp({ status: "cancelled", cancelledAt: "2026-10-19T02:00:00.000Z", archivedAt: "2026-10-19T02:00:00.000Z", createdAt: "2026-10-01T02:00:00.000Z" }); // 已取消且未填期望日期 → 不计未填数
+
+const expStats = buildStats({ requirements: expRequirements, events: [], teams: [{ id: "platform", name: "基础平台组", color: "purple" }], now, granularity: "week", periods: 12 });
+assert.equal(expStats.current.key, "2026-10-19");
+assert.equal(expStats.current.expectedDue, 4, "due this week: A/B/C/D; early release E waits until 10-25");
+assert.equal(expStats.current.expectedMet, 2, "A shipped before expected, D shipped before its due date today");
+assert.ok(Math.abs(expStats.current.expectedRatio - 0.5) < 1e-9);
+assert.equal(expStats.buckets.find(bucket => bucket.key === "2026-09-28").expectedDue, 1);
+assert.equal(expStats.buckets.find(bucket => bucket.key === "2026-09-28").expectedMet, 0);
+assert.equal(expStats.buckets.find(bucket => bucket.key === "2026-09-28").expectedRatio, 0);
+assert.equal(expStats.buckets.find(bucket => bucket.key === "2026-10-12").expectedRatio, null, "nothing due → null ratio");
+assert.equal(expStats.range.expectedDue, 5, "cancelled G and out-of-range J are excluded");
+assert.equal(expStats.range.expectedMet, 2);
+assert.ok(Math.abs(expStats.range.expectedRatio - 0.4) < 1e-9);
+assert.equal(expStats.missingExpected, 1, "only H lacks an expected date among non-cancelled requirements");
 assert.equal(derived.filter(event => event.type === "created").length, 7);
 
 const backfilled = buildBackfillEvents(
