@@ -130,6 +130,8 @@ function windowMetrics(startMs: number, asOfMs: number, points: Point[], interva
   let blocked = 0;
   let archived = 0;
   let overdue = 0;
+  let lateReleased = 0;
+  let lateReleasedHigh = 0;
   let stock = 0;
   let expectedDue = 0;
   let expectedMet = 0;
@@ -138,7 +140,15 @@ function windowMetrics(startMs: number, asOfMs: number, points: Point[], interva
   for (const point of points) {
     const inWindow = (time: number | null) => time !== null && time >= startMs && time <= asOfMs;
     if (inWindow(point.created)) created += 1;
-    if (inWindow(point.released)) released += 1;
+    if (point.released !== null && inWindow(point.released)) {
+      released += 1;
+      const expected = point.requirement.expectedDate;
+      const releasedDate = todayString(new Date(point.released));
+      if (expected && releasedDate > expected.slice(0, 10)) {
+        lateReleased += 1;
+        if (point.requirement.priority === "high") lateReleasedHigh += 1;
+      }
+    }
     if (inWindow(point.cancelled)) cancelled += 1;
     if (inWindow(point.archived) && point.requirement.status !== "cancelled") archived += 1;
     if ((intervals.get(point.requirement.id) ?? []).some(([start, end]) => start <= asOfMs && end > startMs)) blocked += 1;
@@ -159,7 +169,7 @@ function windowMetrics(startMs: number, asOfMs: number, points: Point[], interva
     }
   }
   return {
-    created, released, cancelled, blocked, archived, overdue, stock,
+    created, released, cancelled, blocked, archived, overdue, lateReleased, lateReleasedHigh, stock,
     net: created - cancelled - archived,
     releaseRatio: created ? released / created : null,
     expectedDue, expectedMet, expectedRatio: expectedDue ? expectedMet / expectedDue : null,
@@ -208,6 +218,8 @@ export function buildStats(input: StatsInput): StatsData {
       blocked: metrics.blocked,
       archived: metrics.archived,
       overdue: metrics.overdue,
+      lateReleased: metrics.lateReleased,
+      lateReleasedHigh: metrics.lateReleasedHigh,
       stock: metrics.stock,
       expectedDue: metrics.expectedDue,
       expectedMet: metrics.expectedMet,

@@ -83,6 +83,28 @@ assert.equal(monthly.current.cancelled, 1);
 assert.equal(monthly.current.blocked, 2);
 assert.equal(monthly.current.overdue, 1);
 
+// 逾期上线按实际上线日期统计：当期按 release date 归入周/月，全部优先级统计并单列高优子集。
+const lateReleaseRequirements = [
+  { ...requirements[0], id: 101, teamId: "platform", priority: "high", expectedDate: "2026-10-20", status: "released", stageId: "released", enteredAt: "2026-10-21T02:00:00.000Z", releasedAt: "2026-10-21T02:00:00.000Z" },
+  { ...requirements[0], id: 102, teamId: "product", priority: "medium", expectedDate: "2026-10-13", status: "released", stageId: "released", enteredAt: "2026-10-14T02:00:00.000Z", releasedAt: "2026-10-14T02:00:00.000Z" },
+  { ...requirements[0], id: 103, teamId: "platform", priority: "high", expectedDate: "2026-10-20", status: "released", stageId: "released", enteredAt: "2026-10-20T02:00:00.000Z", releasedAt: "2026-10-20T02:00:00.000Z" },
+  { ...requirements[0], id: 104, teamId: "data", priority: "high", expectedDate: "2026-10-10", status: "active", releasedAt: null },
+];
+const lateWeekly = buildStats({ requirements: lateReleaseRequirements, events: [], teams, now, granularity: "week", periods: 3 });
+assert.equal(lateWeekly.current.lateReleased, 1);
+assert.equal(lateWeekly.current.lateReleasedHigh, 1);
+assert.equal(lateWeekly.previous.key, "2026-10-12");
+assert.equal(lateWeekly.previous.lateReleased, 1, "late launch belongs to the week of actual release");
+assert.equal(lateWeekly.previous.lateReleasedHigh, 0, "medium-priority late launch is included in all-priority count");
+assert.equal(lateWeekly.range.lateReleased, 2);
+assert.equal(lateWeekly.range.lateReleasedHigh, 1);
+assert.equal(lateWeekly.current.overdue, 1, "existing end-of-period high overdue stock remains separate");
+assert.equal(lateWeekly.teams.find(team => team.teamId === "platform").lateReleased, 1);
+assert.equal(lateWeekly.teams.find(team => team.teamId === "product").lateReleased, 1);
+const lateMonthly = buildStats({ requirements: lateReleaseRequirements, events: [], teams, now, granularity: "month", periods: 2 });
+assert.equal(lateMonthly.current.lateReleased, 2);
+assert.equal(lateMonthly.current.lateReleasedHigh, 1);
+
 const filtered = buildStats({ requirements, events, teams, now, granularity: "week", periods: 12, teamId: "product" });
 assert.equal(filtered.buckets.reduce((total, bucket) => total + bucket.created, 0), 2);
 assert.equal(filtered.teams.length, 1);

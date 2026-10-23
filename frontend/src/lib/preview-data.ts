@@ -59,7 +59,7 @@ for (const [index, team] of teams.entries()) {
   requirements.push({
     id: samples.length + index + 1, teamId: team.id, title: `${team.name}上线交付回顾`,
     description: "已通过上线验收，正式交付使用。", priority: "medium", owner: "林小满",
-    expectedDate: due(-4), stageId: "released", enteredAt: ago(4), blocked: false, blockReason: "",
+    expectedDate: due(index === 0 ? -6 : -4), stageId: "released", enteredAt: ago(4), blocked: false, blockReason: "",
     status: "released", source: "手工录入", externalId: null, createdBy: "preview-owner",
     updatedBy: "preview-owner", createdAt: ago(21), updatedAt: ago(4), releasedAt: ago(4), cancelledAt: null,
     archivedAt: index === 0 ? null : ago(4),
