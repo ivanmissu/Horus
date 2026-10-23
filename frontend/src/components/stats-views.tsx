@@ -199,6 +199,7 @@ export function StatsPage() {
     { label: "本期上线", value: current.released, delta: previous ? current.released - previous.released : null, hint: "推进到上线阶段", icon: Rocket, tone: "purple", goodWhenUp: true },
     { label: "本期取消", value: current.cancelled, delta: previous ? current.cancelled - previous.cancelled : null, hint: "取消即归档", icon: Ban, tone: "red", goodWhenUp: false },
     { label: "本期卡点", value: current.blocked, delta: previous ? current.blocked - previous.blocked : null, hint: granularity === "week" ? "周内去重需求数" : "月内去重需求数", icon: CirclePause, tone: "orange", goodWhenUp: false },
+    { label: "本期逾期上线", value: current.lateReleased, delta: previous ? current.lateReleased - previous.lateReleased : null, hint: `其中高优 ${current.lateReleasedHigh} 项 · 按实际上线日归期`, icon: AlarmClock, tone: "red", goodWhenUp: false },
   ] : [];
   const mini = current ? [
     { label: "在途存量", value: count(current.stock), hint: "含已上线待归档", icon: Layers3, tone: "purple" },
@@ -253,10 +254,10 @@ export function StatsPage() {
               <div className="stats-chart-scroll"><StockChart buckets={stats.buckets} /></div>
             </section>
             <section className="card stats-note-card">
-              <div className="table-card-heading"><div><h2>本期怎么读<span className="small-label">{current.label}</span></h2><p>四个数字先看方向，再看结构</p></div></div>
+              <div className="table-card-heading"><div><h2>本期怎么读<span className="small-label">{current.label}</span></h2><p>先看流入、交付与风险，再看结构</p></div></div>
               <div className="stats-read-list">
                 <div><span className="stats-read-icon blue"><Sparkles size={15} /></span><p><strong>{current.created} 项新建</strong>，同期有 {current.released} 项推进到上线。</p></div>
-                <div><span className="stats-read-icon orange"><CirclePause size={15} /></span><p><strong>{current.blocked} 项需求</strong>在期内被卡住过，期末仍有 {current.overdue} 项高优逾期。</p></div>
+                <div><span className="stats-read-icon orange"><CirclePause size={15} /></span><p><strong>{current.blocked} 项需求</strong>在期内被卡住过，期末仍有 {current.overdue} 项高优逾期；本期另有 <strong>{current.lateReleased} 项逾期上线</strong>（其中高优 {current.lateReleasedHigh} 项）。</p></div>
                 <div><span className="stats-read-icon teal"><Layers3 size={15} /></span><p>在途存量 <strong>{current.stock} 项</strong>，本期净增 <strong>{current.net > 0 ? "+" : ""}{current.net}</strong>。</p></div>
                 <div><span className="stats-read-icon blue"><Target size={15} /></span><p>本期 <strong>{current.expectedDue} 项期望日到期</strong>，其中 <strong>{current.expectedMet} 项按期上线</strong>。</p></div>
               </div>
@@ -265,27 +266,27 @@ export function StatsPage() {
           </div>
 
           <section className="card stats-table-card">
-            <div className="table-card-heading"><div><h2>团队对比<span className="small-label">{stats.range.label}</span></h2><p>区间累计；期末在途与逾期为当前值</p></div><span className="subtle">共 {stats.teams.length} 个团队</span></div>
+            <div className="table-card-heading"><div><h2>团队对比<span className="small-label">{stats.range.label}</span></h2><p>区间累计；期末在途与高优逾期为当前值</p></div><span className="subtle">共 {stats.teams.length} 个团队</span></div>
             <div className="management-table-scroll"><table className="stats-table">
-              <thead><tr><th>团队</th><th>新建</th><th>上线</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>高优逾期</th><th>预期达成率</th></tr></thead>
+              <thead><tr><th>团队</th><th>新建</th><th>上线</th><th>逾期上线</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>高优逾期</th><th>预期达成率</th></tr></thead>
               <tbody>{stats.teams.map(team => <tr key={team.teamId}>
                 <td><span className={`stats-team-dot ${team.color}`} />{team.name}</td>
-                <td>{team.created}</td><td>{team.released}</td><td>{team.cancelled}</td><td>{team.blocked}</td><td>{team.archived}</td><td>{team.stock}</td><td className={team.overdue ? "text-red" : ""}>{team.overdue}</td>
+                <td>{team.created}</td><td>{team.released}</td><td title={`其中高优 ${team.lateReleasedHigh} 项`} className={team.lateReleased ? "text-red" : ""}>{team.lateReleased}（高优 {team.lateReleasedHigh}）</td><td>{team.cancelled}</td><td>{team.blocked}</td><td>{team.archived}</td><td>{team.stock}</td><td className={team.overdue ? "text-red" : ""}>{team.overdue}</td>
                 <td title={`按期 ${team.expectedMet} / 期望日已到 ${team.expectedDue}`}>{ratioText(team.expectedRatio)}</td>
-              </tr>)}{!stats.teams.length && <tr><td colSpan={9} className="stats-empty-cell">当前范围内没有团队数据</td></tr>}</tbody>
-              <tfoot><tr><td>合计</td><td>{stats.range.created}</td><td>{stats.range.released}</td><td>{stats.range.cancelled}</td><td>{stats.range.blocked}</td><td>{stats.range.archived}</td><td>{stats.range.stock}</td><td>{stats.range.overdue}</td>
+              </tr>)}{!stats.teams.length && <tr><td colSpan={10} className="stats-empty-cell">当前范围内没有团队数据</td></tr>}</tbody>
+              <tfoot><tr><td>合计</td><td>{stats.range.created}</td><td>{stats.range.released}</td><td title={`其中高优 ${stats.range.lateReleasedHigh} 项`} className={stats.range.lateReleased ? "text-red" : ""}>{stats.range.lateReleased}（高优 {stats.range.lateReleasedHigh}）</td><td>{stats.range.cancelled}</td><td>{stats.range.blocked}</td><td>{stats.range.archived}</td><td>{stats.range.stock}</td><td>{stats.range.overdue}</td>
                 <td title={`按期 ${stats.range.expectedMet} / 期望日已到 ${stats.range.expectedDue}`}>{ratioText(stats.range.expectedRatio)}</td>
               </tr></tfoot>
             </table></div>
           </section>
 
           <section className="card stats-table-card">
-            <div className="table-card-heading"><div><h2>周期明细<span className="small-label">最近在前</span></h2><p>逐期核对流入、流出与存量变化</p></div><span className="subtle">上线 / 新建 = 当期上线数 ÷ 当期新建数；预期达成率 = 按期上线数 ÷ 期望日已到数{stats.missingExpected > 0 ? `；另有 ${stats.missingExpected} 项未填期望日期未计入` : ""}</span></div>
+            <div className="table-card-heading"><div><h2>周期明细<span className="small-label">最近在前</span></h2><p>逐期核对流入、流出、逾期上线与存量变化</p></div><span className="subtle">上线 / 新建 = 当期上线数 ÷ 当期新建数；预期达成率 = 按期上线数 ÷ 期望日已到数{stats.missingExpected > 0 ? `；另有 ${stats.missingExpected} 项未填期望日期未计入` : ""}</span></div>
             <div className="management-table-scroll"><table className="stats-table stats-period-table">
-              <thead><tr><th>周期</th><th>新建</th><th>上线</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>净增</th><th>上线 / 新建</th><th>预期达成率</th></tr></thead>
+              <thead><tr><th>周期</th><th>新建</th><th>上线</th><th>逾期上线（高优）</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>净增</th><th>上线 / 新建</th><th>预期达成率</th></tr></thead>
               <tbody>{[...stats.buckets].reverse().map(bucket => <tr key={bucket.key} className={bucket.current ? "current" : ""}>
                 <td><span>{bucket.label}</span>{bucket.current && <Badge tone="blue">进行中</Badge>}</td>
-                <td>{bucket.created}</td><td>{bucket.released}</td><td>{bucket.cancelled}</td><td>{bucket.blocked}</td><td>{bucket.archived}</td><td>{bucket.stock}</td>
+                <td>{bucket.created}</td><td>{bucket.released}</td><td title={`其中高优 ${bucket.lateReleasedHigh} 项`} className={bucket.lateReleased ? "text-red" : ""}>{bucket.lateReleased}（高优 {bucket.lateReleasedHigh}）</td><td>{bucket.cancelled}</td><td>{bucket.blocked}</td><td>{bucket.archived}</td><td>{bucket.stock}</td>
                 <td className={bucket.net < 0 ? "text-red" : ""}>{bucket.net > 0 ? "+" : ""}{bucket.net}</td><td>{ratioText(bucket.releaseRatio)}</td>
                 <td title={`按期 ${bucket.expectedMet} / 期望日已到 ${bucket.expectedDue}`}>{ratioText(bucket.expectedRatio)}</td>
               </tr>)}</tbody>
@@ -303,7 +304,8 @@ export function StatsPage() {
         <div><Badge tone="neutral">在途存量 / 净增</Badge><p>在途 = 尚未归档的需求（含已上线待归档）。净增 = 当期新建 − 取消 − 归档，反映在途规模的变化。</p></div>
         <div><Badge tone="green">上线 / 新建</Badge><p>当期上线数 ÷ 当期新建数。大于 100% 说明当期交付量超过新增量，正在消化历史存量。</p></div>
         <div><Badge tone="teal">预期达成率</Badge><p>按期望上线/完成日期归集：期望日落在该周期、且期望日已到的需求（不含已取消）中，实际上线日不晚于期望上线/完成日（当天算按期）的占比。期望日未到的（含已提前上线）暂不计入，到期后计入；期望日已过仍未上线算未达成。{stats?.missingExpected ? `当前范围内有 ${stats.missingExpected} 项未填期望上线/完成日期，不计入该比率。` : "未填期望上线/完成日期的需求不计入该比率。"}</p></div>
-        <div><Badge tone="amber">高优逾期</Badge><p>截至周期末仍处于推进中、优先级为高、且期望上线/完成日期早于周期末的需求；未填期望上线/完成日期的不计入。不限优先级的「全部逾期」只在工作台与钉钉摘要中提示，不参与周期统计。</p></div>
+        <div><Badge tone="amber">高优逾期</Badge><p>期末仍未上线、优先级为高，且期望上线/完成日期早于期末的需求数；未填期望日期的不计入。它是期末未完成存量，不含已经上线的需求。</p></div>
+        <div><Badge tone="red">逾期上线</Badge><p>按实际上线日期归属周/月；实际上线日期晚于期望上线/完成日期即计为逾期上线，所有优先级都会统计，并单列其中的高优数量。工作台只将未归档的逾期上线计入「全部逾期」及相应的「高优逾期」；归档后不再计入当前数量，但归档历史仍保留状态标记。</p></div>
       </div>
       <div className="guide-note"><Info size={17} /><p>上线、取消与卡点事件自本版本起精确记录。更早的历史数据由创建、上线、取消时间及审计日志回填，页面标记为估算；卡点历史在事件记录启用前可能不完整。</p></div>
       {stats?.hasEstimates && <div className="stats-estimate-note"><Info size={14} />当前统计包含历史回填数据，仅供趋势参考。</div>}

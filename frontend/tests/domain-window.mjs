@@ -11,7 +11,9 @@ import {
   nextWeekMorning,
   daysOverdue,
   isAnyOverdue,
+  isLateReleased,
   isOverdue,
+  isOverdueOrLateReleased,
   PRIORITY_LABELS,
   dateRangeLabel,
   endOfShanghaiWeek,
@@ -62,6 +64,14 @@ assert.equal(isOverdue(dated("high", "2026-10-21"), wednesday), false, "期望�
 assert.equal(isAnyOverdue(dated("high", null), wednesday), false, "未填期望上线/完成日期不算错");
 assert.equal(isAnyOverdue(dated("high", "2026-10-20", "released"), wednesday), false, "已上线的需求不再计入逾期");
 assert.equal(isAnyOverdue(dated("high", "2026-10-20", "cancelled"), wednesday), false, "已取消的需求不再计入逾期");
+const lateReleased = { ...dated("high", "2026-10-22", "released"), enteredAt: "2026-10-23T02:00:00.000Z", releasedAt: "2026-10-23T02:00:00.000Z" };
+assert.equal(isLateReleased(lateReleased), true, "10 月 22 日期望、10 月 23 日上线属于逾期上线");
+assert.equal(isOverdue(lateReleased, wednesday), true, "高优逾期上线计入高优逾期口径");
+assert.equal(isOverdueOrLateReleased(lateReleased, wednesday), true);
+assert.equal(isFocused(lateReleased, wednesday), true, "逾期上线的未归档需求也属于工作台风险高亮范围");
+assert.equal(isLateReleased({ ...lateReleased, priority: "medium", expectedDate: "2026-10-23" }), false, "期望日当天上线不算逾期");
+assert.equal(isLateReleased({ ...lateReleased, expectedDate: null }), false, "未填期望日期无法判定逾期上线");
+assert.equal(isOverdueOrLateReleased({ ...dated("medium", "2026-10-20"), releasedAt: null, enteredAt: "2026-10-01T00:00:00.000Z" }, wednesday), true, "全部优先级的未上线逾期仍计入");
 assert.equal(daysOverdue("2026-10-10", wednesday), 11);
 assert.deepEqual(PRIORITY_LABELS, { high: "高", medium: "中", low: "低" });
 assert.equal(DEFAULT_PRIORITY, "high", "新增需求的默认优先级为高");

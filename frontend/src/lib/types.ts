@@ -40,6 +40,10 @@ export type StatsBucket = {
   archived: number;
   /** High-priority active requirements past their expected date at the bucket end. */
   overdue: number;
+  /** Requirements released in this bucket after their expected date (all priorities). */
+  lateReleased: number;
+  /** High-priority subset of `lateReleased`. */
+  lateReleasedHigh: number;
   /** Unarchived requirements (active + released awaiting archive) at the bucket end. */
   stock: number;
   /** created - cancelled - archived within the bucket. */
@@ -63,6 +67,8 @@ export type StatsTeamRow = {
   blocked: number;
   archived: number;
   overdue: number;
+  lateReleased: number;
+  lateReleasedHigh: number;
   stock: number;
   /** On-time launch metrics over the visible range, per team. */
   expectedDue: number;
