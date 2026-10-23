@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Code2, Layers3, ChartNoAxesCombined, Server, X, Inbox, LoaderCircle, ChevronDown, CalendarDays, Clock3, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import type { Team } from "@/lib/types";
+import { todayString } from "@/lib/domain";
+import { buildMonthCells, canGoPreviousMonth } from "@/lib/calendar";
 
 export function HorusLogo({ compact = false }: { compact?: boolean }) {
   return <span className="brand"><span className="brand-mark"><svg width="29" height="29" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M6.5 17.5C13 10 24.5 10 33 17.5c-6.8 7.9-18.8 8.7-26.5 0Z" stroke="currentColor" strokeWidth="2.4" strokeLinejoin="round"/><circle cx="20.2" cy="17.7" r="4.3" fill="currentColor"/><path d="m11.2 22.3 1.8 8.1 5.1-4.2M24 23.2l5.4 4.9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg></span>{!compact && <span className="brand-word">Horus<span className="brand-dot">.</span></span>}</span>;
@@ -251,18 +253,7 @@ function parseISODate(s: string): Date | null {
   if (d.getFullYear() !== Number(m[1]) || d.getMonth() !== Number(m[2]) - 1 || d.getDate() !== Number(m[3])) return null;
   return d;
 }
-function toISODate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-function startOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function addMonths(d: Date, delta: number) { return new Date(d.getFullYear(), d.getMonth() + delta, 1); }
-function isSameDay(a: Date | null, b: Date | null) {
-  if (!a || !b) return false;
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
 
 export function DatePicker({
   value,
@@ -274,6 +265,9 @@ export function DatePicker({
   className = "",
   style,
   variant = "default",
+  min = null,
+  clearable = true,
+  minHint = "只能选择当天及以后",
 }: {
   value: string; // YYYY-MM-DD or ""
   onChange: (value: string) => void;
@@ -284,6 +278,11 @@ export function DatePicker({
   className?: string;
   style?: React.CSSProperties;
   variant?: "default" | "small" | "quiet";
+  /** Inclusive earliest selectable day (YYYY-MM-DD). Earlier days render locked. */
+  min?: string | null;
+  /** Required fields must not offer a way back to an empty value. */
+  clearable?: boolean;
+  minHint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -308,26 +307,10 @@ export function DatePicker({
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const today = new Date();
-  // build calendar cells
-  const first = startOfMonth(view);
-  const startWeekday = (first.getDay() + 6) % 7; // Mon=0
-  const daysInMonth = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
-  const daysInPrev = new Date(view.getFullYear(), view.getMonth(), 0).getDate();
-  const cells: { date: Date; isCurrent: boolean; isToday: boolean; isSelected: boolean; isMuted: boolean }[] = [];
-  for (let i = startWeekday - 1; i >= 0; i--) {
-    const d = new Date(view.getFullYear(), view.getMonth() - 1, daysInPrev - i);
-    cells.push({ date: d, isCurrent: false, isToday: isSameDay(d, today), isSelected: isSameDay(d, selectedDate), isMuted: true });
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(view.getFullYear(), view.getMonth(), d);
-    cells.push({ date, isCurrent: true, isToday: isSameDay(date, today), isSelected: isSameDay(date, selectedDate), isMuted: false });
-  }
-  const remaining = 42 - cells.length;
-  for (let d = 1; d <= remaining; d++) {
-    const date = new Date(view.getFullYear(), view.getMonth() + 1, d);
-    cells.push({ date, isCurrent: false, isToday: isSameDay(date, today), isSelected: isSameDay(date, selectedDate), isMuted: true });
-  }
+  // “今天”按北京时间判定，与逾期/统计口径一致，不受访问者设备时区影响。
+  const todayIso = todayString();
+  const cells = buildMonthCells({ viewYear: view.getFullYear(), viewMonth: view.getMonth(), today: todayIso, min, selected: value || null });
+  const previousEnabled = canGoPreviousMonth(view.getFullYear(), view.getMonth(), min);
 
   const display = value ? value.replaceAll("-", ".") : "";
   const hasValue = !!value;
@@ -358,7 +341,7 @@ export function DatePicker({
         style={{ position: "fixed", left, top, width: panelW, zIndex: 1300 }}
       >
         <div className="ui-date-header">
-          <button type="button" className="icon-button tiny" aria-label="上个月" onClick={() => setView(v => addMonths(v, -1))}><ChevronLeft size={16} /></button>
+          <button type="button" className="icon-button tiny" aria-label="上个月" disabled={!previousEnabled} title={!previousEnabled ? `可选日期不早于 ${min}` : undefined} onClick={() => setView(v => addMonths(v, -1))}><ChevronLeft size={16} /></button>
           <span className="ui-date-title">{view.getFullYear()}年 {String(view.getMonth() + 1).padStart(2, "0")}月</span>
           <button type="button" className="icon-button tiny" aria-label="下个月" onClick={() => setView(v => addMonths(v, 1))}><ChevronRight size={16} /></button>
         </div>
@@ -366,27 +349,29 @@ export function DatePicker({
           {["一", "二", "三", "四", "五", "六", "日"].map(d => <span key={d}>{d}</span>)}
         </div>
         <div className="ui-date-grid">
-          {cells.map((c, idx) => (
+          {cells.map((cell, idx) => (
             <button
               key={idx}
               type="button"
-              className={`ui-date-cell ${c.isMuted ? "is-muted" : ""} ${c.isToday ? "is-today" : ""} ${c.isSelected ? "is-selected" : ""}`}
-              aria-label={toISODate(c.date)}
-              aria-selected={c.isSelected}
+              className={`ui-date-cell ${!cell.isCurrentMonth ? "is-muted" : ""} ${cell.isToday ? "is-today" : ""} ${cell.isSelected ? "is-selected" : ""} ${cell.disabled ? "is-disabled" : ""}`}
+              aria-label={cell.iso}
+              aria-selected={cell.isSelected}
+              disabled={cell.disabled}
+              title={cell.disabled ? minHint : cell.iso}
               onClick={() => {
-                onChange(toISODate(c.date));
+                onChange(cell.iso);
                 setOpen(false);
                 triggerRef.current?.focus();
               }}
             >
-              {c.date.getDate()}
+              {cell.day}
             </button>
           ))}
         </div>
         <div className="ui-date-footer">
-          <button type="button" className="text-button" onClick={() => { const t = new Date(); onChange(toISODate(t)); setView(t); setOpen(false); }}>今天</button>
+          <button type="button" className="text-button" onClick={() => { onChange(todayIso); setView(parseISODate(todayIso) || new Date()); setOpen(false); }}>今天</button>
           <span className="ui-date-footer-spacer" />
-          {hasValue && <button type="button" className="button small" onClick={() => { onChange(""); setOpen(false); }}>清空</button>}
+          {hasValue && clearable && <button type="button" className="button small" onClick={() => { onChange(""); setOpen(false); }}>清空</button>}
           <button type="button" className="button primary small" onClick={() => setOpen(false)}>确定</button>
         </div>
       </div>,
@@ -412,7 +397,7 @@ export function DatePicker({
         <CalendarDays size={15} className="ui-date-icon" />
         <span className={`ui-date-value ${!hasValue ? "is-placeholder" : ""}`}>{hasValue ? display : placeholder}</span>
         <span className="ui-date-actions">
-          {hasValue && !disabled && (
+          {hasValue && !disabled && clearable && (
             <span
               role="button"
               tabIndex={0}
