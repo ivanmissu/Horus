@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import {
   addMonths,
   canArchive,
+  creationTimeForCycle,
+  cycleOf,
   DEFAULT_PRIORITY,
+  DEFAULT_REQUIREMENT_CYCLE,
+  isScheduled,
+  launchCycleOf,
+  nextWeekMorning,
   daysOverdue,
   isAnyOverdue,
   isOverdue,
@@ -73,4 +79,34 @@ assert.equal(canArchive({ status: "released", archivedAt: "2026-10-16T00:00:00.0
 assert.equal(canArchive({ status: "active", archivedAt: null }), false);
 assert.equal(shanghaiClock("2026-10-16T01:30:00.000Z"), "09:30");
 assert.match(shanghaiClock(), /^\d{2}:\d{2}$/);
+// 需求周期：本周 = 当前时间，下周 = 下周一 09:00（北京时间）。
+assert.equal(DEFAULT_REQUIREMENT_CYCLE, "this");
+assert.equal(iso(nextWeekMorning(wednesday)), "2026-10-26T01:00:00.000Z", "下周一 09:00 Asia/Shanghai");
+assert.equal(iso(creationTimeForCycle("this", wednesday)), iso(wednesday));
+assert.equal(iso(creationTimeForCycle("next", wednesday)), "2026-10-26T01:00:00.000Z");
+assert.equal(isScheduled({ createdAt: "2026-10-26T01:00:00.000Z" }, wednesday), true);
+assert.equal(isScheduled({ createdAt: "2026-10-19T02:00:00.000Z" }, wednesday), false);
+
+const cycleReq = createdAt => ({ createdAt });
+assert.equal(cycleOf(cycleReq("2026-10-14T02:00:00.000Z"), wednesday), "last");
+assert.equal(cycleOf(cycleReq("2026-10-18T15:59:59.999Z"), wednesday), "last", "上周日仍属于上周");
+assert.equal(cycleOf(cycleReq("2026-10-18T16:00:00.000Z"), wednesday), "this");
+assert.equal(cycleOf(cycleReq("2026-10-25T15:59:59.999Z"), wednesday), "this");
+assert.equal(cycleOf(cycleReq("2026-10-25T16:00:00.000Z"), wednesday), "next");
+assert.equal(cycleOf(cycleReq("2026-10-01T00:00:00.000Z"), wednesday), null, "更早的需求不属于三档之一");
+
+const launchReq = expectedDate => ({ expectedDate });
+assert.equal(launchCycleOf(launchReq("2026-10-19"), wednesday), "this");
+assert.equal(launchCycleOf(launchReq("2026-10-25"), wednesday), "this", "周日是本周最后一天");
+assert.equal(launchCycleOf(launchReq("2026-10-26"), wednesday), "next");
+assert.equal(launchCycleOf(launchReq("2026-11-01"), wednesday), "next");
+assert.equal(launchCycleOf(launchReq("2026-11-02"), wednesday), null);
+assert.equal(launchCycleOf(launchReq(null), wednesday), null);
+
+// 下周待启动的需求尚未进入流程：不命中逾期与工作台高亮。
+const scheduled = { status: "active", createdAt: "2026-10-26T01:00:00.000Z", blocked: true, priority: "high", expectedDate: "2026-10-20" };
+assert.equal(isAnyOverdue(scheduled, wednesday), false, "下周待启动不参与逾期");
+assert.equal(isOverdue(scheduled, wednesday), false);
+assert.equal(isFocused(scheduled, wednesday), false, "下周待启动不进入风险高亮");
+
 console.log("DOMAIN NATURAL-WEEK TESTS PASSED");

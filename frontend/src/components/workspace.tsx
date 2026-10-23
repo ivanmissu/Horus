@@ -9,7 +9,7 @@ import { Dashboard, RequirementsPage, TeamPage } from "./requirement-views";
 import { StatsPage } from "./stats-views";
 import { CreateRequirement, RequirementDetail } from "./requirement-dialogs";
 import { MembersPage, NotificationsPage, StagesPage } from "./management";
-import { isAnyOverdue, isInFlight, requirementCode, roleLabel } from "@/lib/domain";
+import { isAnyOverdue, isInFlight, isScheduled, requirementCode, roleLabel } from "@/lib/domain";
 import type { WorkspaceData } from "@/lib/types";
 import { embeddedAuthHeaders, EMBEDDED_SESSION_KEY } from "@/lib/embedded-session";
 
@@ -30,7 +30,7 @@ function WorkspaceShell() {
   const title = path === "/" ? "工作台" : path === "/stats" ? "需求统计" : path === "/requirements" ? "所有需求" : path === "/archive" ? "归档历史" : team?.name || (path.endsWith("stages") ? "阶段模板" : path.endsWith("members") ? "成员与团队" : "通知设置");
   const active = data.requirements.filter(r => r.status === "active");
   const inFlight = data.requirements.filter(isInFlight);
-  const alerts = active.filter(r => r.blocked || isAnyOverdue(r, data.now));
+  const alerts = active.filter(r => !isScheduled(r, data.now) && (r.blocked || isAnyOverdue(r, data.now)));
   const searchResults = query.trim() ? data.requirements.filter(r => `${r.title} ${r.owner} ${requirementCode(r.id)}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 7) : [];
   useEffect(() => {
     const handle = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); searchRef.current?.focus(); } };

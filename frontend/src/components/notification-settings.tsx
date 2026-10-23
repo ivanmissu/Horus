@@ -5,7 +5,7 @@ import { ArrowUpRight, Bell, Check, ExternalLink, Eye, EyeOff, Info, Link2, Save
 import { useWorkspace } from "./workspace-context";
 import { Badge, EmptyState, Spinner, TimePicker } from "./ui";
 import { PageHeading } from "./requirement-views";
-import { daysOverdue, isAnyOverdue, PRIORITY_LABELS, todayString } from "@/lib/domain";
+import { daysOverdue, isAnyOverdue, isScheduled, PRIORITY_LABELS, todayString } from "@/lib/domain";
 
 export function NotificationsPage() {
   const { data, busy, mutate } = useWorkspace();
@@ -17,7 +17,7 @@ export function NotificationsPage() {
   const [appUrl, setAppUrl] = useState(data.settings.appUrl);
   const [showWebhook, setShowWebhook] = useState(false);
   const scheduledDigestAvailable = process.env.NEXT_PUBLIC_HORUS_SCHEDULED_DIGEST_AVAILABLE !== "false";
-  const active = data.requirements.filter(r => r.status === "active");
+  const active = data.requirements.filter(r => r.status === "active" && !isScheduled(r, data.now));
   const blocked = active.filter(r => r.blocked);
   // 与钉钉摘要口径保持一致：逾期不限优先级。
   const overdue = active.filter(r => isAnyOverdue(r, data.now));

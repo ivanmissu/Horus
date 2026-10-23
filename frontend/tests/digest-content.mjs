@@ -61,4 +61,16 @@ const empty = composeDigest([], [team], today, [], "");
 assert.match(empty.markdown, /0 项卡点 · 0 项逾期/);
 assert.match(empty.markdown, /所有需求有序推进，暂无卡点或逾期。/);
 
+// 下周待启动的卡点/逾期不进入摘要，直到下周一 09:00 的创建时间生效。
+const upcoming = composeDigest([
+  row(9, { blocked: true, blockReason: "下周才启动", createdAt: "2026-10-26T01:00:00.000Z" }),
+  row(10, { priority: "high", expectedDate: "2026-10-01", createdAt: "2026-10-26T01:00:00.000Z" }),
+], [team], today, [], "");
+assert.equal(upcoming.blockedCount, 0, "下周待启动不计入卡点");
+assert.equal(upcoming.overdueCount, 0, "下周待启动不计入逾期");
+assert.equal(upcoming.merged.length, 0);
+// 本周创建的需求照常推送。
+const current = composeDigest([row(11, { blocked: true, blockReason: "本周卡点", createdAt: "2026-10-20T01:00:00.000Z" })], [team], today, [], "");
+assert.equal(current.blockedCount, 1);
+
 console.log("DIGEST CONTENT TESTS PASSED");
