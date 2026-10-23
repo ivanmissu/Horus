@@ -124,13 +124,24 @@ export function canArchive(r: Pick<Requirement, "status" | "archivedAt">) {
   return r.status === "released" && !r.archivedAt;
 }
 /**
- * 「本周新建」= created in the current natural week (Monday 00:00 Asia/Shanghai)
- * and still active. Released, cancelled and archived requirements are excluded.
+ * 「本周新建」= created in the current natural week (Monday 00:00 Asia/Shanghai .. now)
+ * and not cancelled. Released and archived requirements stay included; cancelled
+ * requirements are excluded from the workbench count (unlike statistics, which keeps them).
  */
 export function isNew(r: Pick<Requirement, "status" | "createdAt">, now: string | Date = new Date()) {
   const created = new Date(r.createdAt).getTime();
   const current = new Date(now).getTime();
-  return r.status === "active" && created >= startOfShanghaiWeek(now).getTime() && created <= current;
+  return r.status !== "cancelled" && created >= startOfShanghaiWeek(now).getTime() && created <= current;
+}
+/** Only this-week active requirements still at the 「需求评审」 stage show the row/detail 「新建」 badge. */
+export function showNewBadge(
+  r: Pick<Requirement, "status" | "createdAt" | "stageId">,
+  stages: Stage[] | undefined,
+  now: string | Date = new Date(),
+) {
+  if (r.status !== "active" || !isNew(r, now)) return false;
+  const stage = stages?.find(item => item.id === r.stageId);
+  return stage ? stage.name === "需求评审" : r.stageId === "review";
 }
 /**
  * 逾期（不限优先级）: still in flight but already past the expected date.
@@ -157,7 +168,7 @@ export function isOverdueOrLateReleased(r: Pick<Requirement, "status" | "priorit
 }
 /** Union of the three highlight rules; the workbench itself lists every unarchived requirement. */
 export function isFocused(r: Pick<Requirement, "status" | "createdAt" | "blocked" | "priority" | "expectedDate" | "releasedAt" | "enteredAt">, now: string | Date = new Date()) {
-  return isLateReleased(r) || r.status === "active" && !isScheduled(r, now) && (isNew(r, now) || r.blocked || isAnyOverdue(r, now));
+  return isLateReleased(r) || (!isScheduled(r, now) && isNew(r, now)) || (r.status === "active" && !isScheduled(r, now) && (r.blocked || isAnyOverdue(r, now)));
 }
 export function daysSince(value: string, now: string | Date = new Date()) {
   return Math.max(0, Math.floor((new Date(now).getTime() - new Date(value).getTime()) / 86400000));

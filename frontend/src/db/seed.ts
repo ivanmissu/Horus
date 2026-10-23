@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { databaseDialect, db, pool } from "@/db";
 import { teams, members, requirements, notificationSettings } from "@/db/schema";
-import { creationTimeForCycle, DEFAULT_STAGES, todayString } from "@/lib/domain";
+import { creationTimeForCycle, DEFAULT_STAGES, startOfShanghaiWeek, todayString } from "@/lib/domain";
 
 let seeded: Promise<void> | undefined;
 export function ensureSeed() {
@@ -41,6 +41,9 @@ async function seed() {
       const now = new Date();
       const ago = (days: number) => new Date(now.getTime() - days * 86400000).toISOString();
       const due = (days: number) => todayString(new Date(now.getTime() + days * 86400000));
+      const weekStart = startOfShanghaiWeek(now);
+      const thisWeekCreated = new Date(Math.min(weekStart.getTime() + 2 * 3600000, now.getTime())).toISOString();
+      const thisWeekDone = new Date(Math.min(weekStart.getTime() + 6 * 3600000, now.getTime())).toISOString();
       type Item = [string, number, number, number, "high" | "medium" | "low", number | null, string, string?];
       const groups: Record<string, Item[]> = {
         platform: [
@@ -93,9 +96,13 @@ async function seed() {
           expectedDate: expected === null ? null : due(expected), stageId: DEFAULT_STAGES[stage].id,
           enteredAt: ago(dwell), createdAt: ago(age), updatedAt: ago(dwell), blocked: !!block, blockReason: block || "", createdBy, updatedBy: createdBy,
         })));
+        const releasedThisWeek = teamId === "platform" || teamId === "product";
+        const releaseTime = releasedThisWeek ? thisWeekDone : ago(4);
+        const cancelThisWeek = teamId === "platform" || teamId === "product";
+        const cancelTime = cancelThisWeek ? thisWeekDone : ago(5);
         await tx.insert(requirements).values([
-          { teamId, title: `${teamId === "platform" ? "统一认证登录页优化" : teamId === "product" ? "客户详情页体验升级" : teamId === "data" ? "周报数据自动汇总" : "自动化部署流程升级"}`, description: "已通过上线验收，正式交付使用。", priority: "medium", owner: teamId === "product" ? "苏晓" : teamId === "data" ? "周亦舟" : "林小满", stageId: "released", status: "released", expectedDate: due(-4), enteredAt: ago(4), createdAt: ago(21), updatedAt: ago(4), archivedAt: ago(4), createdBy, updatedBy: createdBy },
-          { teamId, title: `${teamId === "platform" ? "旧版网关兼容适配" : teamId === "product" ? "活动页面模板扩展" : teamId === "data" ? "旧版报表迁移" : "备用集群扩容"}`, description: "经团队评估，当前阶段暂不投入，保留记录以供后续参考。", priority: "low", owner: teamId === "product" ? "苏晓" : teamId === "data" ? "周亦舟" : "林小满", stageId: "design", status: "cancelled", enteredAt: ago(8), createdAt: ago(24), updatedAt: ago(5), archivedAt: ago(5), createdBy, updatedBy: createdBy },
+          { teamId, title: `${teamId === "platform" ? "统一认证登录页优化" : teamId === "product" ? "客户详情页体验升级" : teamId === "data" ? "周报数据自动汇总" : "自动化部署流程升级"}`, description: "已通过上线验收，正式交付使用。", priority: "medium", owner: teamId === "product" ? "苏晓" : teamId === "data" ? "周亦舟" : "林小满", stageId: "released", status: "released", expectedDate: due(teamId === "platform" ? -6 : releasedThisWeek ? 2 : -4), enteredAt: releaseTime, releasedAt: releaseTime, createdAt: releasedThisWeek ? thisWeekCreated : ago(21), updatedAt: releaseTime, archivedAt: teamId === "platform" ? null : releaseTime, createdBy, updatedBy: createdBy },
+          { teamId, title: `${teamId === "platform" ? "旧版网关兼容适配" : teamId === "product" ? "活动页面模板扩展" : teamId === "data" ? "旧版报表迁移" : "备用集群扩容"}`, description: "经团队评估，当前阶段暂不投入，保留记录以供后续参考。", priority: "low", owner: teamId === "product" ? "苏晓" : teamId === "data" ? "周亦舟" : "林小满", stageId: "design", status: "cancelled", enteredAt: teamId === "platform" ? thisWeekCreated : ago(8), cancelledAt: cancelTime, createdAt: teamId === "platform" ? thisWeekCreated : ago(24), updatedAt: cancelTime, archivedAt: cancelTime, createdBy, updatedBy: createdBy },
         ]);
       }
       // 下周待启动的示例：创建时间落在下周一 09:00，届时自动进入在途列表。
