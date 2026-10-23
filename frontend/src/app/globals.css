@@ -316,3 +316,7 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 .upcoming-section{margin-top:30px}
 .upcoming-section .section-heading{margin-bottom:15px}
 .upcoming-section .section-heading h2{color:#8a71c9}
+
+/* 状态标记一行放不下时在状态列内换行，避免撑出表格横向滚动条（如同时出现已上线+逾期上线+待归档） */
+.flags-cell .flag-list{display:flex;flex-wrap:wrap;row-gap:4px}
+.flags-cell .badge{flex-shrink:0}
