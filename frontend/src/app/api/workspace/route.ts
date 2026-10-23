@@ -6,7 +6,7 @@ import { teams, members, requirements, auditLogs, requirementEvents, notificatio
 import { loadWorkspace } from "@/lib/data";
 import { isPreviewMode } from "@/lib/preview";
 import { getActor, AppError, assertOwner, assertTeam } from "@/lib/auth";
-import { DEFAULT_STAGES } from "@/lib/domain";
+import { DEFAULT_PRIORITY, DEFAULT_STAGES } from "@/lib/domain";
 import { sendDigest, validateWebhook } from "@/lib/notifications";
 import type { Stage } from "@/lib/types";
 
@@ -19,11 +19,12 @@ function text(value: unknown, label: string, required = false, max = 2000) {
 }
 function date(value: unknown) {
   if (!value) return null;
-  const result = text(value, "期望上线日期");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(result) || !Number.isFinite(new Date(result).getTime()) || new Date(result).toISOString().slice(0, 10) !== result) throw new AppError("期望上线日期无效");
+  const result = text(value, "期望上线/完成日期");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(result) || !Number.isFinite(new Date(result).getTime()) || new Date(result).toISOString().slice(0, 10) !== result) throw new AppError("期望上线/完成日期无效");
   return result;
 }
 function priority(value: unknown): "high" | "medium" | "low" {
+  if (value === undefined || value === null || value === "") return DEFAULT_PRIORITY;
   if (value !== "high" && value !== "medium" && value !== "low") throw new AppError("请选择正确的优先级");
   return value;
 }
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
       assertTeam(actor, teamId);
       const [team] = await db.select().from(teams).where(eq(teams.id, teamId));
       if (!team) throw new AppError("团队不存在", 404);
-      const values = { teamId, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority || "medium"), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate), stageId: team.stages[0].id, createdBy: actor.id, updatedBy: actor.id };
+      const values = { teamId, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate), stageId: team.stages[0].id, createdBy: actor.id, updatedBy: actor.id };
       result = await db.transaction(async tx => {
         const insert = tx.insert(requirements).values(values);
         const [created] = databaseDialect === "postgres"

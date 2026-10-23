@@ -10,6 +10,10 @@ export const DEFAULT_STAGES: Stage[] = [
   { id: "released", name: "正式上线" },
 ];
 export const PRIORITIES = { high: "高优先级", medium: "中优先级", low: "低优先级" };
+/** Compact priority label for one-line contexts (DingTalk digest, previews). */
+export const PRIORITY_LABELS: Record<Requirement["priority"], string> = { high: "高", medium: "中", low: "低" };
+/** Priority assumed by the 新建需求 form and by `createRequirement` when the client omits it. */
+export const DEFAULT_PRIORITY: Requirement["priority"] = "high";
 const DAY_MS = 86400000;
 /** Asia/Shanghai is UTC+8 all year, so fixed-offset arithmetic is safe. */
 const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -53,7 +57,7 @@ export function addMonths(value: Date, months: number) {
   return new Date(`${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-01T00:00:00+08:00`);
 }
 export function shortDate(value: string | null) {
-  if (!value) return "未填期望上线";
+  if (!value) return "未填期望上线/完成日期";
   const date = value.slice(0, 10).split("-");
   return `${date[1]}.${date[2]}`;
 }
@@ -81,12 +85,20 @@ export function isNew(r: Pick<Requirement, "status" | "createdAt">, now: string 
   const current = new Date(now).getTime();
   return r.status === "active" && created >= startOfShanghaiWeek(now).getTime() && created <= current;
 }
+/**
+ * 逾期（不限优先级）: still in flight but already past the expected date.
+ * Released/cancelled requirements never count, and a missing expected date is never a violation.
+ */
+export function isAnyOverdue(r: Pick<Requirement, "status" | "expectedDate">, now: string | Date = new Date()) {
+  return r.status === "active" && !!r.expectedDate && r.expectedDate < todayString(now);
+}
+/** 高优逾期: the high-priority subset of {@link isAnyOverdue}. */
 export function isOverdue(r: Pick<Requirement, "status" | "priority" | "expectedDate">, now: string | Date = new Date()) {
-  return r.status === "active" && r.priority === "high" && !!r.expectedDate && r.expectedDate < todayString(now);
+  return r.priority === "high" && isAnyOverdue(r, now);
 }
 /** Union of the three highlight rules; the workbench itself lists every unarchived requirement. */
 export function isFocused(r: Pick<Requirement, "status" | "createdAt" | "blocked" | "priority" | "expectedDate">, now: string | Date = new Date()) {
-  return r.status === "active" && (isNew(r, now) || r.blocked || isOverdue(r, now));
+  return r.status === "active" && (isNew(r, now) || r.blocked || isAnyOverdue(r, now));
 }
 export function daysSince(value: string, now: string | Date = new Date()) {
   return Math.max(0, Math.floor((new Date(now).getTime() - new Date(value).getTime()) / 86400000));
