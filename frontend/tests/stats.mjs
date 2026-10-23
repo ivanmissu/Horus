@@ -60,7 +60,7 @@ assert.equal(weekly.teams.find(team => team.teamId === "product").created, 2);
 assert.equal(weekly.teams.find(team => team.teamId === "data").created, 1);
 assert.equal(weekly.hasEstimates, false);
 
-// 预期达成率（按期望上线日归集）：req4 期望 2026-10-10、未上线 → 上周已到期未达成
+// 预期达成率（按期望上线/完成日归集）：req4 期望 2026-10-10、未上线 → 上周已到期未达成
 assert.equal(weekly.missingExpected, 4, "cancelled requirement is excluded from the missing-expected count");
 assert.equal(weekly.current.expectedDue, 0);
 assert.equal(weekly.current.expectedMet, 0);

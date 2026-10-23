@@ -3,7 +3,8 @@ import { db } from "@/db";
 import { requirements, teams, notificationSettings, notificationLogs } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { claimScheduledDigest } from "./digest-claim.ts";
-import { isOverdue, todayString } from "./domain";
+import { composeDigest } from "./digest.ts";
+import { todayString } from "./domain";
 import { normalizePendingItems } from "./notification-settings";
 import { AppError } from "./auth";
 
@@ -14,8 +15,6 @@ export function validateWebhook(value: string) {
     return url;
   } catch { throw new AppError("请输入有效的钉钉机器人 Webhook（https://oapi.dingtalk.com/robot/send?access_token=…）"); }
 }
-const clean = (value: string) => value.replace(/[\r\n]/g, " ").replace(/([*\[\]<>])/g, "\\$1");
-
 export type DigestResult = { sent: boolean; skipped?: boolean; message: string };
 let manualSending: Promise<DigestResult> | undefined;
 let scheduledSending: Promise<DigestResult> | undefined;
@@ -66,17 +65,8 @@ async function deliver(scheduled: boolean): Promise<DigestResult> {
   }
   const active = await db.select().from(requirements).where(eq(requirements.status, "active"));
   const allTeams = await db.select().from(teams);
-  const relevant = active.filter(r => r.blocked || isOverdue(r));
-  const items = relevant.map(r => {
-    const team = allTeams.find(t => t.id === r.teamId)?.name || "";
-    const notes = [r.blocked ? `卡点：${clean(r.blockReason)}` : "", isOverdue(r) ? `高优逾期（期望 ${r.expectedDate} 上线）` : ""].filter(Boolean).join("；");
-    return `- **${clean(r.title)}** · ${clean(team)}\n  ${notes} · 负责人：${clean(r.owner || "未指定")}`;
-  });
   const pendingItems = normalizePendingItems(settings.pendingItems);
-  const merged = [...new Set([...pendingItems, ...items])];
-  const title = `Horus 每日异常摘要 · ${today}`;
-  const appLink = settings.appUrl || process.env.APP_URL || "";
-  const markdown = `## ${title}\n\n> ${active.filter(r => r.blocked).length} 项卡点 · ${active.filter(r => isOverdue(r)).length} 项高优逾期${pendingItems.length ? " · 含上次未送达摘要" : ""}\n\n${merged.length ? merged.join("\n\n") : "所有需求有序推进，暂无卡点或高优逾期。"}${appLink ? `\n\n[打开 Horus 工作台](${appLink})` : ""}`;
+  const { title, markdown, merged } = composeDigest(active, allTeams, today, pendingItems, settings.appUrl || process.env.APP_URL || "");
   try {
     const url = validateWebhook(settings.webhook);
     if (settings.signingSecret) {

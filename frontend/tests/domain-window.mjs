@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import {
   addMonths,
   canArchive,
+  DEFAULT_PRIORITY,
+  daysOverdue,
+  isAnyOverdue,
+  isOverdue,
+  PRIORITY_LABELS,
   dateRangeLabel,
   endOfShanghaiWeek,
   isArchived,
@@ -41,7 +46,22 @@ assert.equal(isNew(active("2026-10-21T04:00:00.001Z"), wednesday), false, "futur
 assert.equal(isNew(active("2026-10-19T02:00:00.000Z", "released"), wednesday), false, "released requirements are not 本周新建");
 assert.equal(isNew(active("2026-10-19T02:00:00.000Z", "cancelled"), wednesday), false, "cancelled requirements are not 本周新建");
 
+// 逾期（全部优先级）与「高优逾期」是两条口径：钉钉摘要用前者，工作台高亮用后者。
+const dated = (priority, expectedDate, status = "active") => ({ status, createdAt: "2026-10-01T00:00:00.000Z", blocked: false, priority, expectedDate });
+assert.equal(isAnyOverdue(dated("high", "2026-10-20"), wednesday), true);
+assert.equal(isAnyOverdue(dated("medium", "2026-10-20"), wednesday), true, "中优先级逾期同样计入全部逾期");
+assert.equal(isAnyOverdue(dated("low", "2026-10-20"), wednesday), true, "低优先级逾期同样计入全部逾期");
+assert.equal(isOverdue(dated("medium", "2026-10-20"), wednesday), false, "高优逾期仍只统计高优先级");
+assert.equal(isOverdue(dated("high", "2026-10-21"), wednesday), false, "期望日当天不算逾期");
+assert.equal(isAnyOverdue(dated("high", null), wednesday), false, "未填期望上线/完成日期不算错");
+assert.equal(isAnyOverdue(dated("high", "2026-10-20", "released"), wednesday), false, "已上线的需求不再计入逾期");
+assert.equal(isAnyOverdue(dated("high", "2026-10-20", "cancelled"), wednesday), false, "已取消的需求不再计入逾期");
+assert.equal(daysOverdue("2026-10-10", wednesday), 11);
+assert.deepEqual(PRIORITY_LABELS, { high: "高", medium: "中", low: "低" });
+assert.equal(DEFAULT_PRIORITY, "high", "新增需求的默认优先级为高");
+
 assert.equal(isFocused({ status: "active", createdAt: "2026-10-01T00:00:00.000Z", blocked: true, priority: "low", expectedDate: null }, wednesday), true);
+assert.equal(isFocused({ status: "active", createdAt: "2026-09-01T00:00:00.000Z", blocked: false, priority: "medium", expectedDate: "2026-10-20" }, wednesday), true, "非高优的逾期需求也属于工作台高亮范围");
 assert.equal(isFocused({ status: "active", createdAt: "2026-10-18T15:59:59.999Z", blocked: false, priority: "low", expectedDate: null }, wednesday), false);
 assert.equal(isFocused({ status: "active", createdAt: "2026-10-18T16:00:00.000Z", blocked: false, priority: "low", expectedDate: null }, wednesday), true);
 
