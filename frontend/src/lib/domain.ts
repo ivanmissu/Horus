@@ -14,6 +14,53 @@ export const PRIORITIES = { high: "高优先级", medium: "中优先级", low: "
 export const PRIORITY_LABELS: Record<Requirement["priority"], string> = { high: "高", medium: "中", low: "低" };
 /** Priority assumed by the 新建需求 form and by `createRequirement` when the client omits it. */
 export const DEFAULT_PRIORITY: Requirement["priority"] = "high";
+/**
+ * 需求周期：创建时必选的本周/下周意向。
+ * 「本周」立即创建；「下周」把创建时间落到下周一 09:00（北京时间），
+ * 在此之前需求处于「下周待启动」，不计入本周新建/卡点/逾期等指标。
+ */
+export type RequirementCycle = "this" | "next";
+export type CycleBucket = "last" | "this" | "next";
+export const REQUIREMENT_CYCLES: Record<RequirementCycle, string> = { this: "本周", next: "下周" };
+export const DEFAULT_REQUIREMENT_CYCLE: RequirementCycle = "this";
+/** 需求周期筛选包含上周，因此比 {@link REQUIREMENT_CYCLES} 多一档。 */
+export const CYCLE_FILTER_LABELS: Record<CycleBucket, string> = { last: "上周", this: "本周", next: "下周" };
+/** 上线周期按期望上线/完成日期落在本周或下周判断。 */
+export const LAUNCH_CYCLE_LABELS: Record<Exclude<CycleBucket, "last">, string> = { this: "本周", next: "下周" };
+/** 下周一 09:00（北京时间）—— 选「下周」时的创建时间。 */
+export function nextWeekMorning(now: string | Date = new Date()) {
+  return new Date(`${todayString(addDays(startOfShanghaiWeek(now), 7))}T09:00:00+08:00`);
+}
+/** 需求创建时间：本周 = 当前时间，下周 = 下周一 09:00。 */
+export function creationTimeForCycle(cycle: RequirementCycle | string, now: string | Date = new Date()) {
+  return (cycle === "next" ? nextWeekMorning(now) : new Date(now)).toISOString();
+}
+/** 已排到下周、创建时间尚未到来：展示为「下周待启动」，不参与本周风险统计。 */
+export function isScheduled(r: Pick<Requirement, "createdAt">, now: string | Date = new Date()) {
+  return new Date(r.createdAt).getTime() > new Date(now).getTime();
+}
+/** 需求周期筛选：按创建时间所属自然周（周一 00:00 北京时间）分档。 */
+export function cycleOf(r: Pick<Requirement, "createdAt">, now: string | Date = new Date()): CycleBucket | null {
+  const created = new Date(r.createdAt).getTime();
+  const weekStart = startOfShanghaiWeek(now).getTime();
+  const week = 7 * DAY_MS;
+  if (created >= weekStart + week) return "next";
+  if (created >= weekStart) return "this";
+  if (created >= weekStart - week) return "last";
+  return null;
+}
+/** 上线周期筛选：期望上线/完成日期落在本周或下周一~周日。 */
+export function launchCycleOf(r: Pick<Requirement, "expectedDate">, now: string | Date = new Date()) {
+  if (!r.expectedDate) return null;
+  const date = r.expectedDate.slice(0, 10);
+  const weekStart = startOfShanghaiWeek(now);
+  const thisStart = todayString(weekStart);
+  const nextStart = todayString(addDays(weekStart, 7));
+  const afterNext = todayString(addDays(weekStart, 14));
+  if (date >= thisStart && date < nextStart) return "this" as const;
+  if (date >= nextStart && date < afterNext) return "next" as const;
+  return null;
+}
 const DAY_MS = 86400000;
 /** Asia/Shanghai is UTC+8 all year, so fixed-offset arithmetic is safe. */
 const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -89,16 +136,17 @@ export function isNew(r: Pick<Requirement, "status" | "createdAt">, now: string 
  * 逾期（不限优先级）: still in flight but already past the expected date.
  * Released/cancelled requirements never count, and a missing expected date is never a violation.
  */
-export function isAnyOverdue(r: Pick<Requirement, "status" | "expectedDate">, now: string | Date = new Date()) {
-  return r.status === "active" && !!r.expectedDate && r.expectedDate < todayString(now);
+export function isAnyOverdue(r: Pick<Requirement, "status" | "expectedDate" | "createdAt">, now: string | Date = new Date()) {
+  // 下周待启动的需求还没有真正进入流程，不参与逾期判断。
+  return r.status === "active" && !isScheduled(r, now) && !!r.expectedDate && r.expectedDate < todayString(now);
 }
 /** 高优逾期: the high-priority subset of {@link isAnyOverdue}. */
-export function isOverdue(r: Pick<Requirement, "status" | "priority" | "expectedDate">, now: string | Date = new Date()) {
+export function isOverdue(r: Pick<Requirement, "status" | "priority" | "expectedDate" | "createdAt">, now: string | Date = new Date()) {
   return r.priority === "high" && isAnyOverdue(r, now);
 }
 /** Union of the three highlight rules; the workbench itself lists every unarchived requirement. */
 export function isFocused(r: Pick<Requirement, "status" | "createdAt" | "blocked" | "priority" | "expectedDate">, now: string | Date = new Date()) {
-  return r.status === "active" && (isNew(r, now) || r.blocked || isAnyOverdue(r, now));
+  return r.status === "active" && !isScheduled(r, now) && (isNew(r, now) || r.blocked || isAnyOverdue(r, now));
 }
 export function daysSince(value: string, now: string | Date = new Date()) {
   return Math.max(0, Math.floor((new Date(now).getTime() - new Date(value).getTime()) / 86400000));

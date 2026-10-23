@@ -1,4 +1,4 @@
-import { daysOverdue, isAnyOverdue, PRIORITY_LABELS } from "./domain.ts";
+import { daysOverdue, isAnyOverdue, PRIORITY_LABELS, todayString } from "./domain.ts";
 import type { Requirement, Team } from "./types.ts";
 
 /** Neutralize Markdown/control characters before a value is embedded in a DingTalk message. */
@@ -12,9 +12,15 @@ export const clean = (value: string) => value.replace(/[\r\n]/g, " ").replace(/(
  * of used to filter requirements away.
  */
 export function composeDigest(active: Requirement[], allTeams: Team[], today: string, pendingItems: string[], appLink: string) {
-  const blockedCount = active.filter(r => r.blocked).length;
-  const overdueCount = active.filter(r => isAnyOverdue(r, today)).length;
-  const items = active.filter(r => r.blocked || isAnyOverdue(r, today)).map(r => {
+  // 下周待启动的需求尚未真正进入流程，不进入摘要（按下周一 09:00 的北京日期判断）。
+  const notStarted = (r: Requirement) => {
+    const created = new Date(r.createdAt);
+    return Number.isFinite(created.getTime()) && todayString(created) > today;
+  };
+  const current = active.filter(r => !notStarted(r));
+  const blockedCount = current.filter(r => r.blocked).length;
+  const overdueCount = current.filter(r => isAnyOverdue(r, today)).length;
+  const items = current.filter(r => r.blocked || isAnyOverdue(r, today)).map(r => {
     const team = allTeams.find(t => t.id === r.teamId)?.name || "";
     const notes = [r.blocked ? `卡点：${clean(r.blockReason)}` : "", isAnyOverdue(r, today) ? `逾期 ${daysOverdue(r.expectedDate!, today)} 天 · 优先级：${PRIORITY_LABELS[r.priority]}（期望上线/完成 ${r.expectedDate}）` : ""].filter(Boolean).join("；");
     return `- **${clean(r.title)}** · ${clean(team)}\n  ${notes} · 负责人：${clean(r.owner || "未指定")}`;

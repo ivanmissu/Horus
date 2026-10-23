@@ -300,3 +300,19 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
   .mobile-req-footer>span{min-width:0}
   .mobile-req-footer>span:last-child{text-align:right}
 }
+
+/* 新建需求的「需求周期」单选组 */
+.choice-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.choice-group .choice{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:11px 13px;border:1px solid #e5e7f0;border-radius:7px;background:#fff;text-align:left;transition:border-color .15s,background .15s,box-shadow .15s}
+.choice-group .choice strong{font-size:12px;font-weight:550;color:#666a7d}
+.choice-group .choice span{font-size:10px;color:#a4a8b7}
+.choice-group .choice:hover{border-color:#d6cdee;background:#fcfaff}
+.choice-group .choice.selected{border-color:#a58fdd;background:#f7f4fe;box-shadow:0 0 0 1px #a58fdd inset}
+.choice-group .choice.selected strong{color:#7f68c7}
+.choice-group .choice.selected span{color:#9f8ecb}
+@media(max-width:560px){.choice-group{grid-template-columns:1fr}}
+
+/* 下周待启动：与本周在途分开陈列 */
+.upcoming-section{margin-top:30px}
+.upcoming-section .section-heading{margin-bottom:15px}
+.upcoming-section .section-heading h2{color:#8a71c9}

@@ -37,6 +37,8 @@ export const requirements = pgTable("horus_requirements", {
   priority: varchar("priority", { length: 16 }).$type<"high" | "medium" | "low">().notNull().default("medium"),
   owner: varchar("owner", { length: 128 }).notNull().default(""),
   expectedDate: varchar("expected_date", { length: 10 }),
+  /** 需求周期：this = 本周（立即创建），next = 下周（创建时间设为下周一 09:00）。 */
+  requirementCycle: varchar("requirement_cycle", { length: 16 }).$type<"this" | "next">().notNull().default("this"),
   stageId: varchar("stage_id", { length: 64 }).notNull(),
   enteredAt: varchar("entered_at", { length: 40 }).notNull().$defaultFn(isoNow),
   blocked: boolean("blocked").notNull().default(false),
