@@ -90,19 +90,19 @@ async function seed() {
         const createdBy = teamId === "product" ? "pm-su" : teamId === "data" ? "pm-zhou" : "pm-lin";
         await tx.insert(requirements).values(items.map(([title, age, stage, dwell, priority, expected, owner, block]) => ({
           teamId, title, description: `推进${title}，完善现有能力与使用体验，提升团队交付质量。`, priority, owner,
-          expectedDate: expected === null ? null : due(expected), requirementCycle: "this" as const, stageId: DEFAULT_STAGES[stage].id,
+          expectedDate: expected === null ? null : due(expected), stageId: DEFAULT_STAGES[stage].id,
           enteredAt: ago(dwell), createdAt: ago(age), updatedAt: ago(dwell), blocked: !!block, blockReason: block || "", createdBy, updatedBy: createdBy,
         })));
         await tx.insert(requirements).values([
-          { teamId, title: `${teamId === "platform" ? "统一认证登录页优化" : teamId === "product" ? "客户详情页体验升级" : teamId === "data" ? "周报数据自动汇总" : "自动化部署流程升级"}`, description: "已通过上线验收，正式交付使用。", priority: "medium", owner: teamId === "product" ? "苏晓" : teamId === "data" ? "周亦舟" : "林小满", requirementCycle: "this", stageId: "released", status: "released", expectedDate: due(-4), enteredAt: ago(4), createdAt: ago(21), updatedAt: ago(4), archivedAt: ago(4), createdBy, updatedBy: createdBy },
-          { teamId, title: `${teamId === "platform" ? "旧版网关兼容适配" : teamId === "product" ? "活动页面模板扩展" : teamId === "data" ? "旧版报表迁移" : "备用集群扩容"}`, description: "经团队评估，当前阶段暂不投入，保留记录以供后续参考。", priority: "low", owner: teamId === "product" ? "苏晓" : teamId === "data" ? "周亦舟" : "林小满", requirementCycle: "this", stageId: "design", status: "cancelled", enteredAt: ago(8), createdAt: ago(24), updatedAt: ago(5), archivedAt: ago(5), createdBy, updatedBy: createdBy },
+          { teamId, title: `${teamId === "platform" ? "统一认证登录页优化" : teamId === "product" ? "客户详情页体验升级" : teamId === "data" ? "周报数据自动汇总" : "自动化部署流程升级"}`, description: "已通过上线验收，正式交付使用。", priority: "medium", owner: teamId === "product" ? "苏晓" : teamId === "data" ? "周亦舟" : "林小满", stageId: "released", status: "released", expectedDate: due(-4), enteredAt: ago(4), createdAt: ago(21), updatedAt: ago(4), archivedAt: ago(4), createdBy, updatedBy: createdBy },
+          { teamId, title: `${teamId === "platform" ? "旧版网关兼容适配" : teamId === "product" ? "活动页面模板扩展" : teamId === "data" ? "旧版报表迁移" : "备用集群扩容"}`, description: "经团队评估，当前阶段暂不投入，保留记录以供后续参考。", priority: "low", owner: teamId === "product" ? "苏晓" : teamId === "data" ? "周亦舟" : "林小满", stageId: "design", status: "cancelled", enteredAt: ago(8), createdAt: ago(24), updatedAt: ago(5), archivedAt: ago(5), createdBy, updatedBy: createdBy },
         ]);
       }
       // 下周待启动的示例：创建时间落在下周一 09:00，届时自动进入在途列表。
       const nextWeekStart = creationTimeForCycle("next", now);
       await tx.insert(requirements).values([
-        { teamId: "platform", title: "服务网格接入预研", description: "下周启动服务网格接入的预研与方案评审。", priority: "medium", owner: "林小满", expectedDate: due(14), requirementCycle: "next", stageId: DEFAULT_STAGES[0].id, enteredAt: nextWeekStart, createdAt: nextWeekStart, updatedAt: nextWeekStart, createdBy: "pm-lin", updatedBy: "pm-lin" },
-        { teamId: "product", title: "会员权益体系改版", description: "下周启动会员权益体系改版的方案设计。", priority: "high", owner: "苏晓", expectedDate: due(18), requirementCycle: "next", stageId: DEFAULT_STAGES[0].id, enteredAt: nextWeekStart, createdAt: nextWeekStart, updatedAt: nextWeekStart, createdBy: "pm-su", updatedBy: "pm-su" },
+        { teamId: "platform", title: "服务网格接入预研", description: "下周启动服务网格接入的预研与方案评审。", priority: "medium", owner: "林小满", expectedDate: due(14), stageId: DEFAULT_STAGES[0].id, enteredAt: nextWeekStart, createdAt: nextWeekStart, updatedAt: nextWeekStart, createdBy: "pm-lin", updatedBy: "pm-lin" },
+        { teamId: "product", title: "会员权益体系改版", description: "下周启动会员权益体系改版的方案设计。", priority: "high", owner: "苏晓", expectedDate: due(18), stageId: DEFAULT_STAGES[0].id, enteredAt: nextWeekStart, createdAt: nextWeekStart, updatedAt: nextWeekStart, createdBy: "pm-su", updatedBy: "pm-su" },
       ]);
       // Production may already have settings; demo seeding must not reset user-configured notifications.
       const [existingSettings] = await tx.select({ id: notificationSettings.id }).from(notificationSettings).where(eq(notificationSettings.id, "default")).limit(1);

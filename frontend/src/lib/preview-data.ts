@@ -50,7 +50,7 @@ const samples: Sample[] = [
 ];
 const requirements: Requirement[] = samples.map(([teamId, title, age, stage, priority, expected, owner, block], index) => ({
   id: index + 1, teamId, title, description: `推进${title}，提升团队交付质量。`, priority, owner,
-  expectedDate: expected === null ? null : due(expected), requirementCycle: "this", stageId: DEFAULT_STAGES[stage].id,
+  expectedDate: expected === null ? null : due(expected), stageId: DEFAULT_STAGES[stage].id,
   enteredAt: ago(Math.min(age, 2)), blocked: !!block, blockReason: block || "", status: "active",
   source: "手工录入", externalId: null, createdBy: "preview-owner", updatedBy: "preview-owner",
   createdAt: ago(age), updatedAt: ago(Math.min(age, 2)), releasedAt: null, cancelledAt: null, archivedAt: null,
@@ -59,7 +59,7 @@ for (const [index, team] of teams.entries()) {
   requirements.push({
     id: samples.length + index + 1, teamId: team.id, title: `${team.name}上线交付回顾`,
     description: "已通过上线验收，正式交付使用。", priority: "medium", owner: "林小满",
-    expectedDate: due(-4), requirementCycle: "this", stageId: "released", enteredAt: ago(4), blocked: false, blockReason: "",
+    expectedDate: due(-4), stageId: "released", enteredAt: ago(4), blocked: false, blockReason: "",
     status: "released", source: "手工录入", externalId: null, createdBy: "preview-owner",
     updatedBy: "preview-owner", createdAt: ago(21), updatedAt: ago(4), releasedAt: ago(4), cancelledAt: null,
     archivedAt: index === 0 ? null : ago(4),
@@ -70,7 +70,7 @@ for (const [index, team] of teams.entries()) {
   requirements.push({
     id: samples.length + teams.length + index + 1, teamId, title, description: "经团队评估不再投入，取消并归档保留记录。",
     priority: priority as Requirement["priority"], owner: index ? "苏晓" : "林小满", expectedDate: due(-6),
-    requirementCycle: "this", stageId: "design", enteredAt: ago(8), blocked: false, blockReason: "", status: "cancelled",
+    stageId: "design", enteredAt: ago(8), blocked: false, blockReason: "", status: "cancelled",
     source: "手工录入", externalId: null, createdBy: "preview-owner", updatedBy: "preview-owner",
     createdAt: ago(16 + index * 9), updatedAt: ago(5 + index * 3), releasedAt: null,
     cancelledAt: ago(5 + index * 3), archivedAt: ago(5 + index * 3),
@@ -83,7 +83,7 @@ const nextWeekStart = creationTimeForCycle("next", now);
 [["platform", "服务网格接入预研", "林小满", "medium"], ["product", "会员权益体系改版", "苏晓", "high"]].forEach(([teamId, title, owner, priority], index) => {
   requirements.push({
     id: samples.length + teams.length + 2 + index + 1, teamId, title, description: "下周启动，先完成方案评审。",
-    priority: priority as Requirement["priority"], owner, expectedDate: due(14), requirementCycle: "next",
+    priority: priority as Requirement["priority"], owner, expectedDate: due(14),
     stageId: DEFAULT_STAGES[0].id, enteredAt: nextWeekStart, blocked: false, blockReason: "", status: "active",
     source: "手工录入", externalId: null, createdBy: "preview-owner", updatedBy: "preview-owner",
     createdAt: nextWeekStart, updatedAt: nextWeekStart, releasedAt: null, cancelledAt: null, archivedAt: null,
