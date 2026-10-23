@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Plus, RefreshCw, Layers3, Sparkles, CirclePause, AlarmClock, ArrowUpRight, ChevronDown, ChevronRight, CalendarDays, SlidersHorizontal, CircleHelp, ChevronsUp, Equal, Clock3, X, ArrowDownUp, Check, Info, Route, ArrowRight, CircleDot } from "lucide-react";
 import { useWorkspace } from "./workspace-context";
 import { Avatar, Badge, EmptyState, Modal, TeamIcon, Select } from "./ui";
-import { canMaintain, dateRangeLabel, daysOverdue, daysSince, endOfShanghaiWeek, isAnyOverdue, isInFlight, isNew, isOverdue, PRIORITIES, requirementCode, shortDate, startOfShanghaiWeek, todayString } from "@/lib/domain";
+import { canCreateRequirement, canMaintain, dateRangeLabel, daysOverdue, daysSince, endOfShanghaiWeek, isAnyOverdue, isInFlight, isNew, isOverdue, PRIORITIES, requirementCode, shortDate, startOfShanghaiWeek, todayString } from "@/lib/domain";
 import type { FocusFilter, Requirement, Team } from "@/lib/types";
 
 export function PageHeading({ title, subtitle, actions, icon }: { title: string; subtitle: string; actions?: ReactNode; icon?: ReactNode }) {
@@ -13,7 +13,7 @@ export function PageHeading({ title, subtitle, actions, icon }: { title: string;
 function CreateButton({ teamId = "" }: { teamId?: string }) {
   const { data, openCreate } = useWorkspace();
   if (teamId && !canMaintain(data.actor, teamId)) return null;
-  if (data.actor.role !== "owner" && !data.actor.teamIds.length) return null;
+  if (!canCreateRequirement(data.actor)) return null;
   return <button className="button primary desktop-edit" onClick={() => openCreate(teamId)}><Plus size={17} />新建需求</button>;
 }
 function Metrics({ onSelect }: { onSelect: (filter: FocusFilter) => void }) {

@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
       await db.transaction(async tx => {
         const [member] = await tx.select().from(members).where(eq(members.id, id)).for("update");
         if (!member) throw new AppError("成员不存在", 404);
-        if (member.role !== "pm") throw new AppError("仅支持重置产品经理账号密码");
+        if (member.role === "owner") throw new AppError("仅支持重置非负责人账号的密码");
         await tx.update(members).set({ passwordHash: null }).where(eq(members.id, id));
         await tx.delete(sessions).where(eq(sessions.memberId, id));
         await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { memberId: id, username: member.username } });
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
     } else if (action === "createMember" || action === "updateMember") {
       assertOwner(actor);
       const name = text(body.name, "成员姓名", true, 40);
-      const role = body.role === "owner" ? "owner" as const : body.role === "pm" ? "pm" as const : null;
+      const role = body.role === "owner" ? "owner" as const : body.role === "pm" ? "pm" as const : body.role === "observer" ? "observer" as const : null;
       if (!role) throw new AppError("角色无效");
       if (!Array.isArray(body.teamIds) || body.teamIds.some(id => typeof id !== "string")) throw new AppError("请选择绑定团队");
       const allTeams = await db.select({ id: teams.id }).from(teams);
