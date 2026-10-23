@@ -1,10 +1,13 @@
-import { creationTimeForCycle, DEFAULT_STAGES, todayString } from "./domain";
+import { creationTimeForCycle, DEFAULT_STAGES, startOfShanghaiWeek, todayString } from "./domain";
 import type { Member, Requirement, Team, WorkspaceData } from "./types";
 
 // No database or DingTalk traffic. Data is generated for a disposable read-only UI preview.
 const now = new Date();
 const ago = (days: number) => new Date(now.getTime() - days * 86400000).toISOString();
 const due = (days: number) => todayString(new Date(now.getTime() + days * 86400000));
+const weekStart = startOfShanghaiWeek(now);
+const thisWeekCreated = new Date(Math.min(weekStart.getTime() + 2 * 3600000, now.getTime())).toISOString();
+const thisWeekDone = new Date(Math.min(weekStart.getTime() + 6 * 3600000, now.getTime())).toISOString();
 
 export const previewActor: Member = {
   id: "preview-owner", username: "preview", name: "预览负责人", role: "owner", teamIds: [],
@@ -56,24 +59,28 @@ const requirements: Requirement[] = samples.map(([teamId, title, age, stage, pri
   createdAt: ago(age), updatedAt: ago(Math.min(age, 2)), releasedAt: null, cancelledAt: null, archivedAt: null,
 }));
 for (const [index, team] of teams.entries()) {
+  const createdThisWeek = index <= 1;
+  const finishTime = createdThisWeek ? thisWeekDone : ago(4);
   requirements.push({
     id: samples.length + index + 1, teamId: team.id, title: `${team.name}上线交付回顾`,
     description: "已通过上线验收，正式交付使用。", priority: "medium", owner: "林小满",
-    expectedDate: due(index === 0 ? -6 : -4), stageId: "released", enteredAt: ago(4), blocked: false, blockReason: "",
+    expectedDate: due(index === 0 ? -6 : createdThisWeek ? 2 : -4), stageId: "released", enteredAt: finishTime, blocked: false, blockReason: "",
     status: "released", source: "手工录入", externalId: null, createdBy: "preview-owner",
-    updatedBy: "preview-owner", createdAt: ago(21), updatedAt: ago(4), releasedAt: ago(4), cancelledAt: null,
-    archivedAt: index === 0 ? null : ago(4),
+    updatedBy: "preview-owner", createdAt: createdThisWeek ? thisWeekCreated : ago(21), updatedAt: finishTime, releasedAt: finishTime, cancelledAt: null,
+    archivedAt: index === 0 ? null : finishTime,
   });
 }
 // Two cancelled requirements make the statistics page meaningful in preview mode.
 [["platform", "旧版开放平台文档站下线", "medium"], ["product", "活动页旧模板清理", "low"]].forEach(([teamId, title, priority], index) => {
+  const cancelledThisWeek = index === 0;
+  const cancelTime = cancelledThisWeek ? thisWeekDone : ago(5 + index * 3);
   requirements.push({
     id: samples.length + teams.length + index + 1, teamId, title, description: "经团队评估不再投入，取消并归档保留记录。",
-    priority: priority as Requirement["priority"], owner: index ? "苏晓" : "林小满", expectedDate: due(-6),
-    stageId: "design", enteredAt: ago(8), blocked: false, blockReason: "", status: "cancelled",
+    priority: priority as Requirement["priority"], owner: index ? "苏晓" : "林小满", expectedDate: due(cancelledThisWeek ? 5 : -6),
+    stageId: "design", enteredAt: cancelledThisWeek ? thisWeekCreated : ago(8), blocked: false, blockReason: "", status: "cancelled",
     source: "手工录入", externalId: null, createdBy: "preview-owner", updatedBy: "preview-owner",
-    createdAt: ago(16 + index * 9), updatedAt: ago(5 + index * 3), releasedAt: null,
-    cancelledAt: ago(5 + index * 3), archivedAt: ago(5 + index * 3),
+    createdAt: cancelledThisWeek ? thisWeekCreated : ago(16 + index * 9), updatedAt: cancelTime, releasedAt: null,
+    cancelledAt: cancelTime, archivedAt: cancelTime,
   });
 });
 

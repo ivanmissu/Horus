@@ -6,6 +6,7 @@ import {
   cycleOf,
   DEFAULT_PRIORITY,
   DEFAULT_REQUIREMENT_CYCLE,
+  DEFAULT_STAGES,
   isScheduled,
   launchCycleOf,
   nextWeekMorning,
@@ -22,6 +23,7 @@ import {
   isInFlight,
   isNew,
   shanghaiClock,
+  showNewBadge,
   startOfShanghaiMonth,
   startOfShanghaiWeek,
   todayString,
@@ -47,12 +49,23 @@ assert.equal(
   "本周新建窗口 spans the full natural week (Monday..Sunday), not Monday..today",
 );
 
-const active = (createdAt, status = "active") => ({ status, createdAt, blocked: false, priority: "low", expectedDate: null });
+const active = (createdAt, status = "active", stageId = "review", archivedAt = null) => ({ status, stageId, archivedAt, createdAt, blocked: false, priority: "low", expectedDate: null });
 assert.equal(isNew(active("2026-10-18T16:00:00.000Z"), wednesday), true, "Monday 00:00 counts as this week");
 assert.equal(isNew(active("2026-10-18T15:59:59.999Z"), wednesday), false, "last Sunday does not count");
 assert.equal(isNew(active("2026-10-21T04:00:00.001Z"), wednesday), false, "future timestamps do not count");
-assert.equal(isNew(active("2026-10-19T02:00:00.000Z", "released"), wednesday), false, "released requirements are not 本周新建");
-assert.equal(isNew(active("2026-10-19T02:00:00.000Z", "cancelled"), wednesday), false, "cancelled requirements are not 本周新建");
+assert.equal(isNew(active("2026-10-19T02:00:00.000Z", "released", "released"), wednesday), true, "released requirements created this week still count as 本周新建");
+assert.equal(isNew(active("2026-10-19T02:00:00.000Z", "released", "released", "2026-10-20T02:00:00.000Z"), wednesday), true, "archived released requirements created this week still count as 本周新建");
+assert.equal(isNew(active("2026-10-19T02:00:00.000Z", "cancelled", "design", "2026-10-20T02:00:00.000Z"), wednesday), false, "cancelled requirements are excluded from 本周新建");
+
+// 「新建」蓝色标签仅在本周新建且当前阶段为「需求评审」时展示。
+assert.equal(showNewBadge(active("2026-10-19T02:00:00.000Z", "active", "review"), DEFAULT_STAGES, wednesday), true, "本周新建且在需求评审阶段显示新建标签");
+assert.equal(showNewBadge(active("2026-10-19T02:00:00.000Z", "active", "design"), DEFAULT_STAGES, wednesday), false, "推进离开需求评审后不再显示新建标签");
+assert.equal(showNewBadge(active("2026-10-19T02:00:00.000Z", "released", "released"), DEFAULT_STAGES, wednesday), false, "已上线不显示新建标签");
+assert.equal(showNewBadge(active("2026-10-19T02:00:00.000Z", "cancelled", "review"), DEFAULT_STAGES, wednesday), false, "已取消不显示新建标签");
+assert.equal(showNewBadge(active("2026-10-18T15:59:59.999Z", "active", "review"), DEFAULT_STAGES, wednesday), false, "上周创建即使仍在需求评审也不显示新建标签");
+assert.equal(showNewBadge(active("2026-10-26T01:00:00.000Z", "active", "review"), DEFAULT_STAGES, wednesday), false, "下周待启动不显示新建标签");
+assert.equal(showNewBadge(active("2026-10-19T02:00:00.000Z", "active", "custom-1"), [{ id: "custom-1", name: "需求评审" }, { id: "released", name: "正式上线" }], wednesday), true, "自定义阶段名为需求评审时同样显示");
+assert.equal(showNewBadge(active("2026-10-19T02:00:00.000Z", "active", "review"), [{ id: "review", name: "方案评审" }, { id: "released", name: "正式上线" }], wednesday), false, "改名后不再叫需求评审则不显示");
 
 // 逾期（全部优先级）与「高优逾期」是两条口径：钉钉摘要用前者，工作台高亮用后者。
 const dated = (priority, expectedDate, status = "active") => ({ status, createdAt: "2026-10-01T00:00:00.000Z", blocked: false, priority, expectedDate });

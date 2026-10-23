@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Plus, RefreshCw, Layers3, Sparkles, CirclePause, AlarmClock, ArrowUpRight, ChevronDown, ChevronRight, CalendarDays, SlidersHorizontal, CircleHelp, ChevronsUp, Equal, Clock3, X, ArrowDownUp, Check, Info, Route, ArrowRight, CircleDot } from "lucide-react";
 import { useWorkspace } from "./workspace-context";
 import { Avatar, Badge, EmptyState, Modal, TeamIcon, Select } from "./ui";
-import { canCreateRequirement, canMaintain, CYCLE_FILTER_LABELS, cycleOf, dateRangeLabel, daysOverdue, daysSince, endOfShanghaiWeek, isAnyOverdue, isInFlight, isLateReleased, isNew, isOverdue, isOverdueOrLateReleased, isScheduled, LAUNCH_CYCLE_LABELS, launchCycleOf, PRIORITIES, requirementCode, shortDate, startOfShanghaiWeek, todayString } from "@/lib/domain";
+import { canCreateRequirement, canMaintain, CYCLE_FILTER_LABELS, cycleOf, dateRangeLabel, daysOverdue, daysSince, endOfShanghaiWeek, isAnyOverdue, isInFlight, isLateReleased, isNew, isOverdue, isOverdueOrLateReleased, isScheduled, LAUNCH_CYCLE_LABELS, launchCycleOf, PRIORITIES, requirementCode, shortDate, showNewBadge, startOfShanghaiWeek, todayString } from "@/lib/domain";
 import type { FocusFilter, Requirement, Team } from "@/lib/types";
 
 export function PageHeading({ title, subtitle, actions, icon }: { title: string; subtitle: string; actions?: ReactNode; icon?: ReactNode }) {
@@ -21,7 +21,8 @@ function Metrics({ onSelect }: { onSelect: (filter: FocusFilter) => void }) {
   const inFlight = data.requirements.filter(isInFlight);
   const upcoming = inFlight.filter(r => isScheduled(r, data.now));
   const active = data.requirements.filter(r => r.status === "active" && !isScheduled(r, data.now));
-  const fresh = active.filter(r => isNew(r, data.now));
+  const fresh = data.requirements.filter(r => isNew(r, data.now));
+  const freshArchived = fresh.filter(r => !!r.archivedAt).length;
   const blocked = active.filter(r => r.blocked);
   const overdueRequirements = inFlight.filter(r => r.status !== "cancelled" && !isScheduled(r, data.now) && isOverdueOrLateReleased(r, data.now));
   const overdue = overdueRequirements.filter(r => r.priority === "high");
@@ -30,7 +31,7 @@ function Metrics({ onSelect }: { onSelect: (filter: FocusFilter) => void }) {
   const overdueDuration = (r: Requirement) => daysOverdue(r.expectedDate!, isLateReleased(r) ? r.releasedAt || r.enteredAt : data.now);
   const stats = [
     { label: "全部在途", value: inFlight.length, icon: Layers3, color: "purple", foot: upcoming.length ? `含 ${upcoming.length} 项下周待启动${pendingArchive ? ` · ${pendingArchive} 项待归档` : ""}` : pendingArchive ? `含 ${pendingArchive} 项已上线待归档` : inFlight.length ? `${data.teams.length} 个团队正在协同推进` : "暂无在途需求", action: () => onSelect("all"), spark: "M2 23 11 20 20 22 29 13 38 15 47 9 56 11 65 3" },
-    { label: "本周新建", value: fresh.length, icon: Sparkles, color: "blue", foot: "本周一至今进入研发流程", action: () => onSelect("new"), spark: "M2 24 11 23 20 16 29 19 38 10 47 12 56 6 65 3" },
+    { label: "本周新建", value: fresh.length, icon: Sparkles, color: "blue", foot: freshArchived ? `本周一至今创建 · 含 ${freshArchived} 项已归档` : "本周一至今进入研发流程", action: () => onSelect("new"), spark: "M2 24 11 23 20 16 29 19 38 10 47 12 56 6 65 3" },
     { label: "存在卡点", value: blocked.length, icon: CirclePause, color: "orange", foot: `分布在 ${new Set(blocked.map(r => r.teamId)).size} 个团队，等待跟进`, action: () => onSelect("blocked") },
     { label: "高优逾期", value: overdue.length, icon: AlarmClock, color: "red", foot: overdue.length ? `最早已逾期 ${Math.max(...overdue.map(overdueDuration))} 天` : "暂无高优需求逾期", action: () => onSelect("overdue") },
     { label: "全部逾期", value: overdueAll.length, icon: CalendarDays, color: "rose", foot: overdueAll.length ? `最早逾期 ${Math.max(...overdueAll.map(overdueDuration))} 天 · 含 ${overdue.length} 项高优` : "暂无逾期需求", action: () => onSelect("overdue-all") },
@@ -39,10 +40,11 @@ function Metrics({ onSelect }: { onSelect: (filter: FocusFilter) => void }) {
 }
 export function RequirementFlags({ requirement: r }: { requirement: Requirement }) {
   const { data } = useWorkspace();
+  const team = data.teams.find(t => t.id === r.teamId);
   if (r.status === "active" && isScheduled(r, data.now)) return <Badge tone="purple" dot>下周待启动</Badge>;
   if (r.status === "released") return <span className="flag-list"><Badge tone="green"><Check size={11} />已上线</Badge>{isLateReleased(r) && <Badge tone={r.priority === "high" ? "red" : "rose"} dot>逾期上线</Badge>}{!r.archivedAt && <Badge tone="amber">待归档</Badge>}</span>;
   if (r.status === "cancelled") return <Badge tone="neutral">已取消</Badge>;
-  return <span className="flag-list">{isNew(r, data.now) && <Badge tone="blue" dot>新建</Badge>}{r.blocked && <Badge tone="orange" dot>卡点</Badge>}{isAnyOverdue(r, data.now) && <Badge tone={isOverdue(r, data.now) ? "red" : "rose"} dot>{isOverdue(r, data.now) ? "高优逾期" : "逾期"}</Badge>}</span>;
+  return <span className="flag-list">{showNewBadge(r, team?.stages, data.now) && <Badge tone="blue" dot>新建</Badge>}{r.blocked && <Badge tone="orange" dot>卡点</Badge>}{isAnyOverdue(r, data.now) && <Badge tone={isOverdue(r, data.now) ? "red" : "rose"} dot>{isOverdue(r, data.now) ? "高优逾期" : "逾期"}</Badge>}</span>;
 }
 export function RequirementTable({ items, showTeam = false }: { items: Requirement[]; showTeam?: boolean }) {
   const { data, openDetail } = useWorkspace();
@@ -79,6 +81,7 @@ export function Dashboard() {
   const inFlight = data.requirements.filter(isInFlight);
   const upcoming = inFlight.filter(r => isScheduled(r, data.now));
   const active = data.requirements.filter(r => r.status === "active" && !isScheduled(r, data.now));
+  const fresh = data.requirements.filter(r => isNew(r, data.now));
   const blocked = active.filter(r => r.blocked).length;
   const overdueRequirements = inFlight.filter(r => r.status !== "cancelled" && !isScheduled(r, data.now) && isOverdueOrLateReleased(r, data.now));
   const overdue = overdueRequirements.filter(r => r.priority === "high").length;
@@ -87,13 +90,14 @@ export function Dashboard() {
   const matchesFocus = (r: Requirement, filter: FocusFilter) => filter === "all" || filter === "new" && isNew(r, data.now) || filter === "blocked" && r.blocked || filter === "overdue" && r.priority === "high" && isOverdueOrLateReleased(r, data.now) || filter === "overdue-all" && isOverdueOrLateReleased(r, data.now);
   const tabs: { id: FocusFilter; name: string; count: number; tone: string }[] = [
     { id: "all", name: "全部在途", count: inFlight.length, tone: "purple" },
-    { id: "new", name: "本周新建", count: active.filter(r => isNew(r, data.now)).length, tone: "blue" },
+    { id: "new", name: "本周新建", count: fresh.length, tone: "blue" },
     { id: "blocked", name: "存在卡点", count: blocked, tone: "orange" },
     { id: "overdue", name: "高优逾期", count: overdue, tone: "red" },
     { id: "overdue-all", name: "全部逾期", count: overdueAll, tone: "rose" },
   ];
   const matchesFilters = (r: Requirement) => (!teamFilter || r.teamId === teamFilter) && (!priority || r.priority === priority) && (!owner || r.owner === owner) && (!cycle || cycleOf(r, data.now) === cycle) && (!launch || launchCycleOf(r, data.now) === launch) && (!query || `${r.title} ${r.owner} ${requirementCode(r.id)}`.toLowerCase().includes(query.toLowerCase()));
   const items = inFlight.filter(r => !isScheduled(r, data.now)).filter(r => matchesFocus(r, focus) && matchesFilters(r));
+  const archivedFreshFiltered = focus === "new" ? fresh.filter(r => !!r.archivedAt && matchesFilters(r)).length : 0;
   // 下周待启动的需求单独分区，不参与本周新建/卡点/逾期等指标。
   const upcomingItems = focus === "all" ? upcoming.filter(matchesFilters) : [];
   const filtersActive = focus !== "all" || !!teamFilter || !!priority || !!owner || !!cycle || !!launch || !!query.trim();
@@ -105,10 +109,10 @@ export function Dashboard() {
     <section className="focus-section"><div className="section-heading"><div><h2>全部在途需求<span className="section-heading-dot" /></h2><span className="section-description">全部未归档需求，风险与待归档状态一眼看清</span></div><span className="date-range"><CalendarDays size={14} />本周新建窗口 <span>{dateRangeLabel(weekStart, weekEnd)}</span></span></div><div className="focus-toolbar"><div className="focus-tabs">{tabs.map(tab => <button key={tab.id} className={`focus-tab ${focus === tab.id ? "active" : ""}`} onClick={() => setFocus(tab.id)}>{tab.id !== "all" && <i className={tab.tone} />}{tab.name}<span>{tab.count}</span></button>)}</div><div className="focus-filter-actions"><Select value={teamFilter} onChange={setTeamFilter} variant="quiet" options={[{ value: "", label: "全部团队" }, ...data.teams.map(t => ({ value: t.id, label: t.name }))]} ariaLabel="按团队筛选" /><span className="filter-divider" /><button className={`filter-button ${filtersOpen || priority || owner || cycle || launch ? "active" : ""}`} onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={15} />筛选{(priority || owner || cycle || launch) && <i />}</button></div></div>
       {filtersOpen && <div className="filter-panel"><span><SlidersHorizontal size={14} />精细筛选</span><Select value={cycle} onChange={setCycle} variant="small" options={[{ value: "", label: "全部需求周期" }, ...Object.entries(CYCLE_FILTER_LABELS).map(([key, label]) => ({ value: key, label }))]} ariaLabel="需求周期筛选" /><Select value={launch} onChange={setLaunch} variant="small" options={[{ value: "", label: "全部上线周期" }, ...Object.entries(LAUNCH_CYCLE_LABELS).map(([key, label]) => ({ value: key, label }))]} ariaLabel="上线周期筛选" /><Select value={priority} onChange={setPriority} variant="small" options={[{ value: "", label: "全部优先级" }, ...Object.entries(PRIORITIES).map(([key, label]) => ({ value: key, label }))]} ariaLabel="优先级筛选" /><Select value={owner} onChange={setOwner} variant="small" options={[{ value: "", label: "全部负责人" }, ...[...new Set(inFlight.map(r => r.owner).filter(Boolean))].map(name => ({ value: name as string, label: name as string }))]} ariaLabel="负责人筛选" /><button className="text-button" onClick={clearFilters}>重置筛选</button><button className="icon-button tiny filter-close" onClick={() => setFiltersOpen(false)} aria-label="收起筛选"><X size={15} /></button></div>}
       <div className="notice-strip"><Sparkles size={15} /><p>{blocked || overdueAll ? <>有 <strong>{blocked} 项需求</strong>遇到卡点，<strong>{overdueAll} 项需求</strong>逾期未上线或逾期上线{overdue > 0 && <>（含 <strong>{overdue} 项高优</strong>）</>}{pendingArchive > 0 && <>，另有 <strong>{pendingArchive} 项已上线待归档</strong></>}，建议优先跟进。</> : pendingArchive > 0 ? <>风险项已清空，另有 <strong>{pendingArchive} 项已上线待归档</strong>，确认后可归档。</> : <>所有需求都在有序推进，继续保持。</>}</p><button onClick={() => setRules(true)}>规则说明<CircleHelp size={13} /></button></div>
-      <div className="requirement-groups">{data.teams.filter(t => items.some(r => r.teamId === t.id)).map(team => <RequirementGroup key={team.id} team={team} items={items.filter(r => r.teamId === team.id)} />)}{!items.length && !upcomingItems.length && <div className="card"><EmptyState title={filtersActive ? "没有匹配的需求" : "还没有在途需求"} description={filtersActive ? "当前筛选条件下没有需求，试试调整筛选条件。" : "新建需求后会出现在这里，并按团队分组展示。"} action={filtersActive ? <button className="button" onClick={clearFilters}>清除筛选</button> : undefined} /></div>}</div><div className="list-footnote"><Check size={13} />{filtersActive ? <>本周筛选出 {items.length} 项需求</> : <>已展示全部 {items.length} 项在途需求</>}<span>{upcomingItems.length ? `另有 ${upcomingItems.length} 项下周待启动 · 已上线未归档的需求保留在列表中` : "已上线未归档的需求保留在列表中"}</span></div>
+      <div className="requirement-groups">{data.teams.filter(t => items.some(r => r.teamId === t.id)).map(team => <RequirementGroup key={team.id} team={team} items={items.filter(r => r.teamId === team.id)} />)}{!items.length && !upcomingItems.length && <div className="card"><EmptyState title={archivedFreshFiltered ? "本周新建的需求均已归档" : filtersActive ? "没有匹配的需求" : "还没有在途需求"} description={archivedFreshFiltered ? `当前筛选范围内有 ${archivedFreshFiltered} 项本周新建需求已完成上线并归档，可在归档历史中查看。` : filtersActive ? "当前筛选条件下没有未归档需求，试试调整筛选条件。" : "新建需求后会出现在这里，并按团队分组展示。"} action={filtersActive ? <button className="button" onClick={clearFilters}>清除筛选</button> : undefined} /></div>}</div><div className="list-footnote"><Check size={13} />{filtersActive ? <>本周筛选出 {items.length} 项需求</> : <>已展示全部 {items.length} 项在途需求</>}<span>{archivedFreshFiltered > 0 ? `另有 ${archivedFreshFiltered} 项本周新建已归档 · 已上线未归档的需求保留在列表中` : upcomingItems.length ? `另有 ${upcomingItems.length} 项下周待启动 · 已上线未归档的需求保留在列表中` : "已上线未归档的需求保留在列表中"}</span></div>
       {upcomingItems.length > 0 && <div className="upcoming-section"><div className="section-heading"><div><h2>下周待启动<span className="section-heading-dot" /></h2><span className="section-description">创建时间设为下周一 09:00，届时自动进入在途列表</span></div><span className="date-range"><CalendarDays size={14} />共 <span>{upcomingItems.length}</span> 项</span></div><div className="requirement-groups">{data.teams.filter(t => upcomingItems.some(r => r.teamId === t.id)).map(team => <RequirementGroup key={team.id} team={team} scope="upcoming" items={upcomingItems.filter(r => r.teamId === team.id)} />)}</div></div>}
     </section>
-    {rules && <Modal title="工作台如何展示需求？" description="全部在途一页看清，风险自动标记。" onClose={() => setRules(false)}><div className="rules-list"><div><Badge tone="purple">需求周期</Badge><p>新建需求时必选本周或下周。本周 = 立即创建；下周 = 创建时间记为下周一 09:00（北京时间）。下周需求在生效前显示为「下周待启动」，单独分区展示，不计入本周新建、卡点与逾期。</p></div><div><Badge tone="blue">本周新建</Badge><p>本周一 00:00（北京时间）起创建、仍在推进中的需求，以蓝色标记高亮；周日结束后自动进入下一周。</p></div><div><Badge tone="orange">存在卡点</Badge><p>所有标记了卡点的在途需求，不受创建时间限制。</p></div><div><Badge tone="red">高优逾期</Badge><p>优先级为高，超过期望日期仍未上线的需求会标记高优逾期；已上线但实际日期晚于期望日期的需求标记为逾期上线，并计入工作台逾期数量。未填日期的需求不命中。</p></div><div><Badge tone="rose">全部逾期</Badge><p>不限优先级；超过期望日期仍未上线，或实际晚于期望日期上线，都会计入工作台全部逾期。逾期上线需求保留「已上线」并增加「逾期上线」标记；归档后从工作台数量移除，但归档历史仍保留标记。钉钉摘要口径不变。</p></div><div><Badge tone="amber">待归档</Badge><p>已推进到末阶段上线、但尚未归档的需求，以「待归档」标记保留在列表中。</p></div></div><div className="guide-note"><Info size={17} /><p>工作台默认列出全部未归档需求（含已上线待归档），按团队分组、不分页；风险与待归档状态以标记高亮，也可点击上方标签快速筛选。已归档与已取消的需求不会出现在这里，可在归档历史中查询。</p></div></Modal>}
+    {rules && <Modal title="工作台如何展示需求？" description="全部在途一页看清，风险自动标记。" onClose={() => setRules(false)}><div className="rules-list"><div><Badge tone="purple">需求周期</Badge><p>新建需求时必选本周或下周。本周 = 立即创建；下周 = 创建时间记为下周一 09:00（北京时间）。下周需求在生效前显示为「下周待启动」，单独分区展示，不计入本周新建、卡点与逾期。</p></div><div><Badge tone="blue">本周新建</Badge><p>统计本周一 00:00（北京时间）起创建且未取消的需求（含已上线与已归档，不含已取消）；工作台列表仅展示未归档项，仅当需求仍处于「需求评审」阶段时显示蓝色「新建」标记。</p></div><div><Badge tone="orange">存在卡点</Badge><p>所有标记了卡点的在途需求，不受创建时间限制。</p></div><div><Badge tone="red">高优逾期</Badge><p>优先级为高，超过期望日期仍未上线的需求会标记高优逾期；已上线但实际日期晚于期望日期的需求标记为逾期上线，并计入工作台逾期数量。未填日期的需求不命中。</p></div><div><Badge tone="rose">全部逾期</Badge><p>不限优先级；超过期望日期仍未上线，或实际晚于期望日期上线，都会计入工作台全部逾期。逾期上线需求保留「已上线」并增加「逾期上线」标记；归档后从工作台数量移除，但归档历史仍保留标记。钉钉摘要口径不变。</p></div><div><Badge tone="amber">待归档</Badge><p>已推进到末阶段上线、但尚未归档的需求，以「待归档」标记保留在列表中。</p></div></div><div className="guide-note"><Info size={17} /><p>工作台默认列出全部未归档需求（含已上线待归档），按团队分组、不分页；风险与待归档状态以标记高亮，也可点击上方标签快速筛选。已归档与已取消的需求不会出现在这里，可在归档历史中查询。</p></div></Modal>}
   </div>;
 }
 function sortRequirements(items: Requirement[], sort: string, now: string) {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { buildStats } from "../src/lib/stats.ts";
+import { isNew } from "../src/lib/domain.ts";
 import { buildBackfillEvents, deriveEventsFromRequirements } from "../src/lib/events.ts";
 
 const now = "2026-10-21T04:00:00.000Z"; // Wednesday 12:00 Asia/Shanghai
@@ -109,6 +110,23 @@ const filtered = buildStats({ requirements, events, teams, now, granularity: "we
 assert.equal(filtered.buckets.reduce((total, bucket) => total + bucket.created, 0), 2);
 assert.equal(filtered.teams.length, 1);
 assert.equal(filtered.teams[0].teamId, "product");
+
+// 需求统计「本期新建」包含已取消需求，工作台「本周新建」排除已取消需求；
+// 推进中、已上线待归档、已归档在两边均计入，下周待启动在两边均排除。
+const alignmentItems = [
+  { ...requirements[0], id: 201, teamId: "platform", status: "active", stageId: "review", createdAt: "2026-10-19T02:00:00.000Z", archivedAt: null, releasedAt: null, cancelledAt: null },
+  { ...requirements[0], id: 202, teamId: "platform", status: "active", stageId: "qa", createdAt: "2026-10-20T02:00:00.000Z", archivedAt: null, releasedAt: null, cancelledAt: null },
+  { ...requirements[0], id: 203, teamId: "product", status: "released", stageId: "released", createdAt: "2026-10-19T03:00:00.000Z", releasedAt: "2026-10-20T05:00:00.000Z", archivedAt: null, cancelledAt: null },
+  { ...requirements[0], id: 204, teamId: "product", status: "released", stageId: "released", createdAt: "2026-10-19T04:00:00.000Z", releasedAt: "2026-10-20T06:00:00.000Z", archivedAt: "2026-10-20T08:00:00.000Z", cancelledAt: null },
+  { ...requirements[0], id: 205, teamId: "data", status: "cancelled", stageId: "design", createdAt: "2026-10-19T05:00:00.000Z", releasedAt: null, cancelledAt: "2026-10-20T04:00:00.000Z", archivedAt: "2026-10-20T04:00:00.000Z" },
+  { ...requirements[0], id: 206, teamId: "data", status: "active", stageId: "review", createdAt: "2026-10-26T01:00:00.000Z", archivedAt: null, releasedAt: null, cancelledAt: null },
+  { ...requirements[0], id: 207, teamId: "platform", status: "active", stageId: "review", createdAt: "2026-10-18T15:59:59.999Z", archivedAt: null, releasedAt: null, cancelledAt: null },
+];
+const alignmentStats = buildStats({ requirements: alignmentItems, events: [], teams, now, granularity: "week", periods: 4 });
+assert.equal(alignmentStats.current.created, 5, "stats includes active + released + archived + cancelled created this week, excludes next-week scheduled");
+assert.equal(alignmentItems.filter(item => isNew(item, now)).length, 4, "workbench includes active + released + archived, excludes cancelled and next-week scheduled");
+const nonCancelledStats = buildStats({ requirements: alignmentItems.filter(item => item.status !== "cancelled"), events: [], teams, now, granularity: "week", periods: 4 });
+assert.equal(nonCancelledStats.current.created, alignmentItems.filter(item => isNew(item, now)).length, "without this-week cancellations, workbench and stats created counts are identical");
 
 const legacy = [{ ...requirements[3], releasedAt: null, status: "released", enteredAt: "2026-10-19T02:00:00.000Z" }];
 const derived = deriveEventsFromRequirements([...requirements, ...legacy]);

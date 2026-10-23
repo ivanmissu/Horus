@@ -297,7 +297,7 @@ export function StatsPage() {
     {rules && <Modal title="需求统计口径" description="自然周、生命周期事件与存量，一次讲清。" onClose={() => setRules(false)}>
       <div className="rules-list">
         <div><Badge tone="blue">自然周</Badge><p>每周一 00:00（北京时间）开始，至周日 24:00 结束；本期为本周一至当前时刻，按月统计使用自然月。</p></div>
-        <div><Badge tone="purple">新建量</Badge><p>按需求创建时间归集，包含之后已上线或已取消的需求，因此可能大于工作台「本周新建」（后者只看仍在推进中的需求）。</p></div>
+        <div><Badge tone="purple">新建量</Badge><p>按需求创建时间归集，包含之后已上线、已归档或已取消的需求；若当期有新建后取消的需求，会比工作台「本周新建」多出已取消的部分（工作台不含已取消）。</p></div>
         <div><Badge tone="teal">上线量</Badge><p>按需求推进到最后一个阶段（正式上线）的时间归集；归档不改变上线时间。</p></div>
         <div><Badge tone="red">取消量</Badge><p>按取消时间归集；取消会立即归档，不再出现在在途列表。</p></div>
         <div><Badge tone="orange">卡点量</Badge><p>该周期内至少被标记过一次卡点的不同需求数；同一需求多次卡点只计一次，跨周期持续卡点会分别计入每个周期。</p></div>
