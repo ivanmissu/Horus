@@ -46,8 +46,6 @@ CREATE TABLE "horus_requirements" (
   "priority" varchar(16) NOT NULL DEFAULT 'medium',
   "owner" varchar(128) NOT NULL DEFAULT '',
   "expected_date" varchar(10),
-  -- 需求周期：this = 本周（立即创建），next = 下周（创建时间设为下周一 09:00）
-  "requirement_cycle" varchar(16) NOT NULL DEFAULT 'this',
   "stage_id" varchar(64) NOT NULL,
   "entered_at" varchar(40) NOT NULL,
   "blocked" boolean NOT NULL DEFAULT false,

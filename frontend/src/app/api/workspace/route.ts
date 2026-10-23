@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       const [team] = await db.select().from(teams).where(eq(teams.id, teamId));
       if (!team) throw new AppError("团队不存在", 404);
       const cycle = requirementCycle(body.requirementCycle);
-      const values = { teamId, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate), requirementCycle: cycle, stageId: team.stages[0].id, createdBy: actor.id, updatedBy: actor.id, createdAt: creationTimeForCycle(cycle, now) };
+      const values = { teamId, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate), stageId: team.stages[0].id, createdBy: actor.id, updatedBy: actor.id, createdAt: creationTimeForCycle(cycle, now) };
       result = await db.transaction(async tx => {
         const insert = tx.insert(requirements).values(values);
         const [created] = databaseDialect === "postgres"

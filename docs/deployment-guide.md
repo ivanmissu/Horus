@@ -53,7 +53,6 @@ horus-app ──出站──► https://oapi.dingtalk.com（每日异常摘要�
 | `scripts/backup.sh` / `scripts/restore.sh` | 数据库备份（.sql.gz）/ 恢复（恢复前自动留底，需 `--yes` 确认） |
 | `deploy/mysql/01-schema.sql` | 8 张表建表 DDL（由 Drizzle Schema 生成），供 DBA 人工建库/评审 |
 | `deploy/mysql/04-stats-upgrade.sql` | 旧库升级到「需求统计」的一次性脚本（新库不要执行） |
-| `deploy/mysql/05-requirement-cycle-upgrade.sql` | 旧库升级到「需求周期」的一次性脚本（新库不要执行；PostgreSQL 用 `deploy/postgres/04-requirement-cycle-upgrade.sql`） |
 | `deploy/mysql/02-init-owner.sql` | 初始负责人 + 通知设置 SQL 版（与应用 `db:init` 等价，幂等） |
 | `frontend/docker-entrypoint.sh` | 容器启动脚本：等 MySQL → 同步表结构 → 初始化负责人 → 启动应用（可用 `HORUS_DB_PUSH` / `HORUS_DB_INIT` 关掉前两步） |
 
@@ -416,7 +415,6 @@ git pull                                   # 2) 拉新代码（或解压新版�
 - 启动时的结构同步对无变更是空操作；`drizzle-kit push --force` 会自动接受 Drizzle 认为可能丢数据的变更（如删列），**发版前先看 schema diff**，不能接受自动删列时停在旧版，走 DBA 变更单手工迁移后再升级。
 - 走路径 D（`HORUS_DB_PUSH=false`）时**没有任何自动同步**：升级前必须自己确认表结构是否需要变更（对比 `frontend/src/db/schema.ts` 与库内结构，或跑一次 `npm run test:schema-sql` 看 SQL 文件有没有漂移），需要变更就由 DBA 执行 DDL 后再换镜像/重启。
 - 升级到含「需求统计」的版本时，旧库先执行 `deploy/mysql/04-stats-upgrade.sql`（PostgreSQL 用 `deploy/postgres/03-stats-upgrade.sql`），再运行 `cd frontend && npm run db:backfill`；新库直接执行 01-schema.sql 即可。
-- 升级到含「需求周期」的版本时，旧库执行 `deploy/mysql/05-requirement-cycle-upgrade.sql`（PostgreSQL 用 `deploy/postgres/04-requirement-cycle-upgrade.sql`）为 `horus_requirements` 增加 `requirement_cycle` 列（存量数据默认「本周」）；走自动 `db:push` 的部署无需手工执行。
 - 回滚：切回上一版代码重新 `./scripts/deploy.sh`，并用升级前备份 `./scripts/restore.sh <备份> --yes` 连库一起回退。不要只回滚应用而留下不兼容的新表结构。
 
 ---
