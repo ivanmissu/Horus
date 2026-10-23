@@ -5,6 +5,7 @@ import { ensureStatsBaseline } from "@/db/backfill-events";
 import { AppError, getActor } from "@/lib/auth";
 import { deriveEventsFromRequirements } from "@/lib/events";
 import { isPreviewMode } from "@/lib/preview";
+import { canViewTeam } from "@/lib/domain";
 import { previewWorkspace } from "@/lib/preview-data";
 import { buildStats, statsPeriods } from "@/lib/stats";
 import type { StatsGranularity } from "@/lib/types";
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
       }), { headers: { "Cache-Control": "no-store" } });
     }
 
-    await getActor();
+    const { actor } = await getActor();
     await ensureStatsBaseline();
     const [allTeams, allRequirements, allEvents] = await Promise.all([
       db.select({ id: teams.id, name: teams.name, color: teams.color }).from(teams),
@@ -55,10 +56,14 @@ export async function GET(request: NextRequest) {
         estimated: requirementEvents.estimated,
       }).from(requirementEvents),
     ]);
+    // 统计同样按账号可见范围过滤：产品经理与观察员只统计绑定团队。
+    const visibleTeams = allTeams.filter(team => canViewTeam(actor, team.id));
+    const visibleRequirements = allRequirements.filter(item => canViewTeam(actor, item.teamId));
+    const visibleIds = new Set(visibleRequirements.map(item => item.id));
     return NextResponse.json(buildStats({
-      requirements: allRequirements,
-      events: allEvents,
-      teams: allTeams,
+      requirements: visibleRequirements,
+      events: allEvents.filter(event => visibleIds.has(event.requirementId)),
+      teams: visibleTeams,
       now,
       granularity,
       periods,

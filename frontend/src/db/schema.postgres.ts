@@ -20,7 +20,7 @@ export const members = pgTable("horus_members", {
   id: varchar("id", { length: 64 }).primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),
   username: varchar("username", { length: 32 }).notNull(),
-  role: varchar("role", { length: 16 }).$type<"owner" | "pm">().notNull().default("pm"),
+  role: varchar("role", { length: 16 }).$type<"owner" | "pm" | "observer">().notNull().default("pm"),
   teamIds: jsonb("team_ids").$type<string[]>().notNull().$defaultFn(() => []),
   passwordHash: varchar("password_hash", { length: 100 }),
   active: boolean("active").notNull().default(true),

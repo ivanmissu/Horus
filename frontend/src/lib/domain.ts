@@ -107,7 +107,19 @@ export function daysOverdue(value: string, now: string | Date = new Date()) {
   return Math.max(0, Math.round((new Date(todayString(now)).getTime() - new Date(value).getTime()) / 86400000));
 }
 export function requirementCode(id: number) { return `HR-${1000 + id}`; }
-export function canMaintain(actor: { role: string; teamIds: string[] }, teamId: string) {
+/** 角色：owner 负责人（全局维护）、pm 产品经理（维护绑定团队）、observer 观察员（仅查看绑定团队）。 */
+export const ROLE_LABELS: Record<string, string> = { owner: "团队负责人", pm: "产品经理", observer: "观察员" };
+export function roleLabel(role: string) { return ROLE_LABELS[role] ?? role; }
+/** 可查看某团队的数据：负责人全部；产品经理与观察员仅限绑定团队。 */
+export function canViewTeam(actor: { role: string; teamIds: string[] }, teamId: string) {
   return actor.role === "owner" || actor.teamIds.includes(teamId);
+}
+/** 可维护某团队需求：仅负责人与绑定该团队的产品经理；观察员永远不可。 */
+export function canMaintain(actor: { role: string; teamIds: string[] }, teamId: string) {
+  return actor.role === "owner" || (actor.role === "pm" && actor.teamIds.includes(teamId));
+}
+/** 是否有任一团队可新建需求。 */
+export function canCreateRequirement(actor: { role: string; teamIds: string[] }) {
+  return actor.role === "owner" || (actor.role === "pm" && actor.teamIds.length > 0);
 }
 export { DAY_MS, SHANGHAI_OFFSET_MS };
