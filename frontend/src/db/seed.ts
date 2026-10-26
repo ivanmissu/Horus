@@ -44,6 +44,9 @@ async function seed() {
       const weekStart = startOfShanghaiWeek(now);
       const thisWeekCreated = new Date(Math.min(weekStart.getTime() + 2 * 3600000, now.getTime())).toISOString();
       const thisWeekDone = new Date(Math.min(weekStart.getTime() + 6 * 3600000, now.getTime())).toISOString();
+      // 上周五上线、一直没归档的示例：演示「历史未归档」页签。
+      const lastWeekDone = new Date(weekStart.getTime() - 3 * 86400000 + 6 * 3600000).toISOString();
+      const lastWeekExpected = todayString(new Date(weekStart.getTime() - 5 * 86400000));
       type Item = [string, number, number, number, "high" | "medium" | "low", number | null, string, string?];
       const groups: Record<string, Item[]> = {
         platform: [
@@ -110,6 +113,9 @@ async function seed() {
       await tx.insert(requirements).values([
         { teamId: "platform", title: "服务网格接入预研", description: "下周启动服务网格接入的预研与方案评审。", priority: "medium", owner: "林小满", expectedDate: due(14), stageId: DEFAULT_STAGES[0].id, enteredAt: nextWeekStart, createdAt: nextWeekStart, updatedAt: nextWeekStart, createdBy: "pm-lin", updatedBy: "pm-lin" },
         { teamId: "product", title: "会员权益体系改版", description: "下周启动会员权益体系改版的方案设计。", priority: "high", owner: "苏晓", expectedDate: due(18), stageId: DEFAULT_STAGES[0].id, enteredAt: nextWeekStart, createdAt: nextWeekStart, updatedAt: nextWeekStart, createdBy: "pm-su", updatedBy: "pm-su" },
+      ]);
+      await tx.insert(requirements).values([
+        { teamId: "product", title: "历史版本数据迁移", description: "上周已上线，等待确认后归档。", priority: "high", owner: "苏晓", expectedDate: lastWeekExpected, stageId: "released", status: "released", enteredAt: lastWeekDone, releasedAt: lastWeekDone, createdAt: ago(28), updatedAt: lastWeekDone, archivedAt: null, createdBy: "pm-su", updatedBy: "pm-su" },
       ]);
       // Production may already have settings; demo seeding must not reset user-configured notifications.
       const [existingSettings] = await tx.select({ id: notificationSettings.id }).from(notificationSettings).where(eq(notificationSettings.id, "default")).limit(1);

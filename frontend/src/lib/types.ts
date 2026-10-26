@@ -20,7 +20,7 @@ export type WorkspaceData = {
   embeddedAuth?: boolean;
   now: string;
 };
-export type FocusFilter = "all" | "new" | "blocked" | "overdue" | "overdue-all";
+export type FocusFilter = "all" | "new" | "blocked" | "overdue" | "overdue-all" | "history";
 export type StatsGranularity = "week" | "month";
 export type StatsBucket = {
   key: string;

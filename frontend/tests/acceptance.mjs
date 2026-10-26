@@ -190,6 +190,9 @@ try {
   assert.equal(await pendingRow.locator(".badge").filter({ hasText: "待归档" }).count(), 1);
   const teamInFlight = inFlight.filter(r => r.teamId === teamId).length;
   assert.equal(await page.locator(".team-nav .nav-item").filter({ hasText: editedTeamName }).locator(".nav-count").textContent(), String(teamInFlight));
+  await page.locator(".focus-tab").filter({ hasText: "历史未归档" }).click();
+  assert.equal(await page.locator(".requirement-table tbody tr").count(), historical.length);
+  assert.equal(await page.locator(".requirement-table tbody tr").filter({ hasText: pendingTitle }).count(), 0, "本周刚上线的待归档不应出现在历史未归档");
   await page.locator(".focus-tab").filter({ hasText: "存在卡点" }).click();
   assert.equal(await page.locator(".requirement-table tbody tr").count(), baseline.requirements.filter(r => r.status === "active" && r.blocked).length);
   await page.locator(".focus-tab").filter({ hasText: "全部在途" }).click();

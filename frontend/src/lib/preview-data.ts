@@ -97,6 +97,18 @@ const nextWeekStart = creationTimeForCycle("next", now);
   });
 });
 
+// A requirement released last Friday and never archived, so the preview
+// shows the 「历史未归档」 tab (released before this Monday 00:00).
+const lastWeekDone = new Date(weekStart.getTime() - 3 * 86400000 + 6 * 3600000).toISOString();
+requirements.push({
+  id: requirements.length + 1, teamId: "product", title: "历史版本数据迁移",
+  description: "上周已上线，等待确认后归档。", priority: "high", owner: "苏晓",
+  expectedDate: todayString(new Date(weekStart.getTime() - 5 * 86400000)), stageId: "released", enteredAt: lastWeekDone, blocked: false, blockReason: "",
+  status: "released", source: "手工录入", externalId: null, createdBy: "preview-owner",
+  updatedBy: "preview-owner", createdAt: ago(28), updatedAt: lastWeekDone, releasedAt: lastWeekDone, cancelledAt: null,
+  archivedAt: null,
+});
+
 export function previewWorkspace(): WorkspaceData {
   return {
     teams, members, requirements, actor: previewActor, demo: true, preview: true,
