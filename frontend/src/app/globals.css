@@ -325,3 +325,32 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 .focus-tabs{min-width:0;overflow-x:auto;scrollbar-width:none}
 .focus-tabs::-webkit-scrollbar{display:none}
 .focus-tab{flex-shrink:0}
+
+/* 期望上线/完成日期调整：列表标记、编辑原因提示与详情历史 */
+.date-change-flag{display:inline-flex;flex-shrink:0;cursor:help}
+.date-change-hint{display:flex;align-items:flex-start;gap:7px;margin-bottom:8px;padding:9px 11px;border:1px solid #f0e3c8;border-radius:6px;background:#fffaf1;color:#b0925d;font-size:10.5px;line-height:1.7}
+.date-change-hint>svg{margin-top:2px;flex-shrink:0;color:#c2a26a}
+.date-change-hint strong{font-weight:550;color:#a0834f}
+.date-change-section{margin-top:22px}
+.date-change-list{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.date-change-item{padding:11px 13px;border:1px solid #efeaf7;border-radius:7px;background:#fcfbfe}
+.date-change-flow{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:10px;line-height:1.6;color:#a79cb8}
+.date-change-flow>svg{color:#c3b6d8}
+.date-change-from{color:#b3a8c0;text-decoration:line-through}
+.date-change-to{font-weight:600;color:#7f6ab8;font-size:11px}
+.date-change-actor{margin-left:auto;padding:1px 6px;border-radius:4px;background:#f2eef9;color:#9a87b7;font-size:9px;line-height:16px}
+.date-change-flow time{color:#b7afc2;font-size:9px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.date-change-reason{margin-top:7px;font-size:10.5px;line-height:1.8;color:#92849f;overflow-wrap:anywhere}
+.date-change-reason::before{content:"原因：";color:#b9abc6}
+.date-change-empty{margin-top:10px;font-size:10px;line-height:1.8;color:#b6adbf}
+@media(max-width:768px){
+  .date-change-flow{gap:5px}
+  .date-change-actor{margin-left:0}
+  .date-change-flow time{margin-left:auto}
+  /* 状态标记多一枚「日期调整」时允许换行，避免 390px 视口出现横向滚动 */
+  .mobile-req-middle{flex-wrap:wrap;row-gap:5px}
+  .mobile-req-middle>.flag-list{flex-wrap:wrap;justify-content:flex-end;row-gap:3px}
+}
+/* 详情顶部标记较多时（含「日期调整」）允许换行，避免抽屉内溢出 */
+.detail-badges{flex-wrap:wrap;row-gap:6px}
+.detail-badges .flag-list{flex-wrap:wrap;row-gap:4px}

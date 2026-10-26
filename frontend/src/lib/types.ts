@@ -4,12 +4,30 @@ export type Team = typeof teams.$inferSelect;
 export type Member = Omit<typeof members.$inferSelect, "passwordHash"> & { firstLogin: boolean };
 export type Requirement = typeof requirements.$inferSelect;
 export type RequirementEvent = typeof requirementEvents.$inferSelect;
+/**
+ * 期望上线/完成日期的一次调整，来源是审计日志里带 `dateChange` 的编辑记录。
+ * 旧数据没有该字段，因此只展示本功能上线后的调整。
+ */
+export type RequirementDateChange = {
+  /** 审计日志 ID，用作列表 key。 */
+  id: number;
+  requirementId: number;
+  fromDate: string | null;
+  toDate: string | null;
+  reason: string;
+  actorId: string;
+  /** 加载时解析出的操作人姓名；账号不存在时回退为「系统」。 */
+  actorName: string;
+  createdAt: string;
+};
 export type NotificationLog = typeof notificationLogs.$inferSelect;
 export type NotificationSettings = Omit<typeof notificationSettings.$inferSelect, "webhook" | "signingSecret" | "pendingItems"> & { hasWebhook: boolean; hasSigningSecret: boolean; pendingCount: number };
 export type WorkspaceData = {
   teams: Team[];
   members: Member[];
   requirements: Requirement[];
+  /** 期望日期调整记录（按修改时间倒序），用于详情历史与列表「日期调整」标记。 */
+  dateChanges: RequirementDateChange[];
   settings: NotificationSettings;
   logs: NotificationLog[];
   actor: Member;

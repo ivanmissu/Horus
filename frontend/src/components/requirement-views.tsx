@@ -1,11 +1,11 @@
 "use client";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Plus, RefreshCw, Layers3, Sparkles, CirclePause, AlarmClock, ArrowUpRight, ChevronDown, ChevronRight, CalendarDays, SlidersHorizontal, CircleHelp, ChevronsUp, Equal, Clock3, X, ArrowDownUp, Check, Info, Route, ArrowRight, CircleDot } from "lucide-react";
+import { Plus, RefreshCw, Layers3, Sparkles, CirclePause, AlarmClock, ArrowUpRight, ChevronDown, ChevronRight, CalendarDays, SlidersHorizontal, CircleHelp, ChevronsUp, Equal, Clock3, X, ArrowDownUp, Check, Info, Route, ArrowRight, CircleDot, Pencil } from "lucide-react";
 import { useWorkspace } from "./workspace-context";
 import { Avatar, Badge, EmptyState, Modal, TeamIcon, Select } from "./ui";
-import { canCreateRequirement, canMaintain, CYCLE_FILTER_LABELS, cycleOf, dateRangeLabel, daysOverdue, daysSince, endOfShanghaiWeek, isAnyOverdue, isHistoricalPendingArchive, isInFlight, isLateReleased, isMainInFlight, isNew, isOverdue, isOverdueOrLateReleased, isScheduled, LAUNCH_CYCLE_LABELS, launchCycleOf, PRIORITIES, requirementCode, shortDate, showNewBadge, startOfShanghaiWeek, todayString } from "@/lib/domain";
-import type { FocusFilter, Requirement, Team } from "@/lib/types";
+import { canCreateRequirement, canMaintain, CYCLE_FILTER_LABELS, cycleOf, dateRangeLabel, daysOverdue, daysSince, endOfShanghaiWeek, expectedDateChangesFor, fullDate, isAnyOverdue, isHistoricalPendingArchive, isInFlight, isLateReleased, isMainInFlight, isNew, isOverdue, isOverdueOrLateReleased, isScheduled, LAUNCH_CYCLE_LABELS, launchCycleOf, PRIORITIES, requirementCode, shortDate, showNewBadge, startOfShanghaiWeek, todayString } from "@/lib/domain";
+import type { FocusFilter, Requirement, RequirementDateChange, Team } from "@/lib/types";
 
 export function PageHeading({ title, subtitle, actions, icon }: { title: string; subtitle: string; actions?: ReactNode; icon?: ReactNode }) {
   return <div className="page-heading"><div className="page-heading-copy">{icon}<div><h1>{title}</h1><p>{subtitle}</p></div></div><div className="page-heading-actions">{actions}</div></div>;
@@ -42,13 +42,25 @@ function Metrics({ onSelect }: { onSelect: (filter: FocusFilter) => void }) {
   ];
   return <div className="metrics-grid">{stats.map(item => <button key={item.label} className={`metric-card metric-${item.color}`} onClick={item.action}><div className="metric-top"><span>{item.label}</span><span className={`metric-icon ${item.color}`}><item.icon size={19} strokeWidth={1.7} /></span></div><div className="metric-middle"><strong>{item.value.toString().padStart(2, "0")}</strong><span>项需求</span>{item.spark && <svg className="metric-spark" viewBox="0 0 68 30" fill="none"><path d={item.spark} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d={`${item.spark}L65 30H2Z`} fill="currentColor" opacity="0.055" /></svg>}</div><div className="metric-foot"><i /><span className="metric-foot-text">{item.foot}</span><ArrowUpRight size={12} /></div></button>)}</div>;
 }
+/** 「日期调整」标记的悬停文案：最近一次调整 + 累计次数。 */
+function dateChangeHint(changes: RequirementDateChange[]) {
+  const latest = changes[0];
+  return [
+    `期望日期调整：${fullDate(latest.fromDate)} → ${fullDate(latest.toDate)}`,
+    `原因：${latest.reason}`,
+    changes.length > 1 ? `共 ${changes.length} 次调整，最近一次由 ${latest.actorName} 修改` : `由 ${latest.actorName} 修改`,
+  ].join("\n");
+}
 export function RequirementFlags({ requirement: r }: { requirement: Requirement }) {
   const { data } = useWorkspace();
   const team = data.teams.find(t => t.id === r.teamId);
-  if (r.status === "active" && isScheduled(r, data.now)) return <Badge tone="purple" dot>下周待启动</Badge>;
-  if (r.status === "released") return <span className="flag-list"><Badge tone="green"><Check size={11} />已上线</Badge>{isLateReleased(r) && <Badge tone={r.priority === "high" ? "red" : "rose"} dot>逾期上线</Badge>}{!r.archivedAt && <Badge tone="amber">{isHistoricalPendingArchive(r, data.now) ? "历史未归档" : "待归档"}</Badge>}</span>;
-  if (r.status === "cancelled") return <Badge tone="neutral">已取消</Badge>;
-  return <span className="flag-list">{showNewBadge(r, team?.stages, data.now) && <Badge tone="blue" dot>新建</Badge>}{r.blocked && <Badge tone="orange" dot>卡点</Badge>}{isAnyOverdue(r, data.now) && <Badge tone={isOverdue(r, data.now) ? "red" : "rose"} dot>{isOverdue(r, data.now) ? "高优逾期" : "逾期"}</Badge>}</span>;
+  // 期望日期调整过的需求在所有列表（含归档历史）常驻标记，悬停可看最近原因。
+  const changes = expectedDateChangesFor(data.dateChanges, r.id);
+  const dateChanged = changes.length ? <span className="date-change-flag" title={dateChangeHint(changes)}><Badge tone="amber"><Pencil size={11} />日期调整</Badge></span> : null;
+  if (r.status === "active" && isScheduled(r, data.now)) return <span className="flag-list"><Badge tone="purple" dot>下周待启动</Badge>{dateChanged}</span>;
+  if (r.status === "released") return <span className="flag-list"><Badge tone="green"><Check size={11} />已上线</Badge>{isLateReleased(r) && <Badge tone={r.priority === "high" ? "red" : "rose"} dot>逾期上线</Badge>}{!r.archivedAt && <Badge tone="amber">{isHistoricalPendingArchive(r, data.now) ? "历史未归档" : "待归档"}</Badge>}{dateChanged}</span>;
+  if (r.status === "cancelled") return <span className="flag-list"><Badge tone="neutral">已取消</Badge>{dateChanged}</span>;
+  return <span className="flag-list">{showNewBadge(r, team?.stages, data.now) && <Badge tone="blue" dot>新建</Badge>}{r.blocked && <Badge tone="orange" dot>卡点</Badge>}{isAnyOverdue(r, data.now) && <Badge tone={isOverdue(r, data.now) ? "red" : "rose"} dot>{isOverdue(r, data.now) ? "高优逾期" : "逾期"}</Badge>}{dateChanged}</span>;
 }
 export function RequirementTable({ items, showTeam = false }: { items: Requirement[]; showTeam?: boolean }) {
   const { data, openDetail } = useWorkspace();

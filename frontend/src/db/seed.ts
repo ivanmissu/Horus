@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { databaseDialect, db, pool } from "@/db";
-import { teams, members, requirements, notificationSettings } from "@/db/schema";
+import { auditLogs, notificationSettings, members, requirements, teams } from "@/db/schema";
 import { creationTimeForCycle, DEFAULT_STAGES, startOfShanghaiWeek, todayString } from "@/lib/domain";
 
 let seeded: Promise<void> | undefined;
@@ -117,6 +117,22 @@ async function seed() {
       await tx.insert(requirements).values([
         { teamId: "product", title: "历史版本数据迁移", description: "上周已上线，等待确认后归档。", priority: "high", owner: "苏晓", expectedDate: lastWeekExpected, stageId: "released", status: "released", enteredAt: lastWeekDone, releasedAt: lastWeekDone, createdAt: ago(28), updatedAt: lastWeekDone, archivedAt: null, createdBy: "pm-su", updatedBy: "pm-su" },
       ]);
+      // 演示数据：两条期望日期调整记录，便于在演示环境查看详情历史与列表「日期调整」标记。
+      const [postponed] = await tx.select({ id: requirements.id }).from(requirements).where(and(eq(requirements.teamId, "platform"), eq(requirements.title, "多租户权限模型升级"))).limit(1);
+      const [delayed] = await tx.select({ id: requirements.id }).from(requirements).where(and(eq(requirements.teamId, "product"), eq(requirements.title, "订单结算流程优化"))).limit(1);
+      const demoChanges = [
+        postponed && { actorId: "pm-lin", requirementId: postponed.id, reason: "等待安全团队确认权限边界，与安全评审对齐后顺延 3 天", from: due(-5), to: due(-2), createdAt: ago(5) },
+        delayed && { actorId: "pm-su", requirementId: delayed.id, reason: "支付渠道回调协议尚未确认，等渠道方回复后调整上线时间", from: due(-6), to: due(-1), createdAt: ago(4) },
+      ].filter(Boolean) as { actorId: string; requirementId: number; reason: string; from: string; to: string; createdAt: string }[];
+      if (demoChanges.length) {
+        await tx.insert(auditLogs).values(demoChanges.map(item => ({
+          actorId: item.actorId,
+          requirementId: item.requirementId,
+          action: "updateRequirement",
+          detail: { reason: item.reason, dateChange: { from: item.from, to: item.to, reason: item.reason } },
+          createdAt: item.createdAt,
+        })));
+      }
       // Production may already have settings; demo seeding must not reset user-configured notifications.
       const [existingSettings] = await tx.select({ id: notificationSettings.id }).from(notificationSettings).where(eq(notificationSettings.id, "default")).limit(1);
       if (!existingSettings) await tx.insert(notificationSettings).values({ id: "default" });

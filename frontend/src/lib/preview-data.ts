@@ -1,5 +1,5 @@
 import { creationTimeForCycle, DEFAULT_STAGES, startOfShanghaiWeek, todayString } from "./domain";
-import type { Member, Requirement, Team, WorkspaceData } from "./types";
+import type { Member, Requirement, RequirementDateChange, Team, WorkspaceData } from "./types";
 
 // No database or DingTalk traffic. Data is generated for a disposable read-only UI preview.
 const now = new Date();
@@ -109,9 +109,16 @@ requirements.push({
   archivedAt: null,
 });
 
+// 三条只读预览用的期望日期调整（含一条已归档需求），让详情历史与各列表的「日期调整」标记可见。
+const dateChanges: RequirementDateChange[] = [
+  { id: 1, requirementId: 2, fromDate: due(-5), toDate: due(-2), reason: "等待安全团队确认权限边界，与安全评审对齐后顺延 3 天", actorId: "pm-lin", actorName: "林小满", createdAt: ago(3) },
+  { id: 2, requirementId: 8, fromDate: due(-6), toDate: due(-1), reason: "支付渠道回调协议尚未确认，等渠道方回复后调整上线时间", actorId: "pm-su", actorName: "苏晓", createdAt: ago(4) },
+  { id: 3, requirementId: 20, fromDate: due(-1), toDate: due(2), reason: "按验收反馈补齐回归范围，与业务确认后延后 3 天上线", actorId: "pm-su", actorName: "苏晓", createdAt: ago(4) },
+];
+
 export function previewWorkspace(): WorkspaceData {
   return {
-    teams, members, requirements, actor: previewActor, demo: true, preview: true,
+    teams, members, requirements, dateChanges, actor: previewActor, demo: true, preview: true,
     settings: { id: "default", enabled: false, time: "09:30", appUrl: "", lastRunDate: null,
       hasWebhook: false, hasSigningSecret: false, pendingCount: 0 },
     logs: [], now: new Date().toISOString(),

@@ -42,7 +42,7 @@
 | :--- | :--- | :--- | :---: | :--- |
 | **首页·全部在途视图** | FR-1 | `src/components/requirement-views.tsx` (`Dashboard`) | 95% | 已实现全部未归档需求按团队分组折叠、本周新建/卡点/逾期（含高优逾期）高亮与筛选、统计卡片与多维筛选 |
 | **团队详情页** | FR-2 | `src/components/requirement-views.tsx` (`TeamPage`) | 95% | 已实现阶段分布柱状/漏斗图（点击可筛选）、在途列表筛选排序、归档历史查询 |
-| **需求全生命周期** | FR-3 | `src/components/requirement-dialogs.tsx` | 95% | 已实现新建、编辑、向前跳阶段推进、禁止回退、末阶段标记上线、手动归档、卡点标记/解除、取消归档、操作留痕 |
+| **需求全生命周期** | FR-3 | `src/components/requirement-dialogs.tsx` | 95% | 已实现新建、编辑（必填修改原因）、向前跳阶段推进、禁止回退、末阶段标记上线、手动归档、卡点标记/解除、取消归档、操作留痕；期望日期调整在详情留痕并在列表标注「日期调整」 |
 | **阶段模板自定义** | FR-4 | `src/components/stages-settings.tsx` | 95% | 已实现团队级阶段增删、改名、拖拽/按钮调序，以及删除有需求阶段时的强制迁移校验 |
 | **成员与团队管理** | FR-5 | `src/components/member-settings.tsx` | 85% | 已实现预建成员、角色分配、PM 多团队绑定、账号停用；**缺负责人重置密码与团队信息编辑** |
 | **钉钉每日异常摘要** | FR-6 | `src/lib/notifications.ts`, `scheduler.ts` | 90% | 已实现 Webhook 校验、HMAC-SHA256 加签、09:30 定时调度、失败次日合并重试、实时预览 |

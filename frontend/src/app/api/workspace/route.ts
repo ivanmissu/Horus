@@ -6,7 +6,7 @@ import { teams, members, requirements, auditLogs, requirementEvents, notificatio
 import { loadWorkspace } from "@/lib/data";
 import { isPreviewMode } from "@/lib/preview";
 import { getActor, AppError, assertOwner, assertTeam } from "@/lib/auth";
-import { creationTimeForCycle, DEFAULT_PRIORITY, DEFAULT_STAGES, type RequirementCycle } from "@/lib/domain";
+import { creationTimeForCycle, DEFAULT_PRIORITY, DEFAULT_STAGES, expectedDateChanged, type RequirementCycle } from "@/lib/domain";
 import { sendDigest, validateWebhook } from "@/lib/notifications";
 import type { Stage } from "@/lib/types";
 
@@ -98,12 +98,23 @@ export async function POST(request: NextRequest) {
           throw new AppError(current.archivedAt ? "已归档需求为只读记录" : "已上线需求为只读记录，归档后仅可查阅");
         }
         let patch: Partial<typeof requirements.$inferInsert> = { updatedAt: now, updatedBy: actor.id };
+        // 编辑保存的审计详情额外携带修改原因；只有期望日期真的变化时才写入 dateChange。
+        let auditDetail: Record<string, unknown> | null = null;
         const events: LifecycleEvent[] = [];
         if (action === "archive") {
           patch.archivedAt = now;
           events.push({ type: "archived" });
         } else if (action === "updateRequirement") {
-          patch = { ...patch, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate) };
+          // 每次编辑保存都必须说明原因：日期调整进入详情历史，其余字段同样留下修改说明。
+          const reason = text(body.reason, "修改原因", true, 200);
+          const expectedDate = date(body.expectedDate);
+          const dateChanged = expectedDateChanged(current.expectedDate, expectedDate);
+          patch = { ...patch, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40), expectedDate };
+          auditDetail = {
+            ...patch,
+            reason,
+            ...(dateChanged ? { dateChange: { from: current.expectedDate ?? null, to: expectedDate, reason } } : {}),
+          };
         } else if (action === "advance") {
           const [team] = await tx.select().from(teams).where(eq(teams.id, current.teamId));
           const target = team.stages.findIndex(s => s.id === body.stageId);
@@ -128,7 +139,7 @@ export async function POST(request: NextRequest) {
           if (current.blocked) events.push({ type: "unblocked", detail: { reason: "cancelled" } });
         }
         await tx.update(requirements).set(patch).where(eq(requirements.id, id));
-        await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: id, action, detail: patch });
+        await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: id, action, detail: auditDetail ?? patch });
         await recordLifecycle(tx, id, current.teamId, now, events);
       });
     } else if (action === "createTeam") {

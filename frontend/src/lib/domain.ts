@@ -1,4 +1,4 @@
-import type { Requirement, Stage } from "./types";
+import type { Requirement, RequirementDateChange, Stage } from "./types";
 export const DEFAULT_STAGES: Stage[] = [
   { id: "review", name: "需求评审" },
   { id: "design", name: "技术方案设计" },
@@ -111,6 +111,22 @@ export function shortDate(value: string | null) {
 /** Inclusive display range from two Shanghai calendar dates (YYYY-MM-DD). */
 export function dateRangeLabel(start: string, end: string) {
   return `${shortDate(start)} – ${shortDate(end)}`;
+}
+/** 完整日期展示：2026-10-21 -> 2026.10.21；空值表示尚未填写。 */
+export function fullDate(value: string | null | undefined) {
+  return value ? value.slice(0, 10).replaceAll("-", ".") : "未填写";
+}
+/** 期望上线/完成日期是否真的发生变化（空值与空值视为未变化）。 */
+export function expectedDateChanged(from: string | null | undefined, to: string | null | undefined) {
+  return (from || null) !== (to || null);
+}
+/** 某个需求的期望日期调整记录；`changes` 需按修改时间倒序传入（工作台数据即此顺序）。 */
+export function expectedDateChangesFor(changes: RequirementDateChange[], requirementId: number) {
+  return changes.filter(change => change.requirementId === requirementId);
+}
+/** 最近一次期望日期调整，列表「日期调整」标记的悬停说明使用。 */
+export function latestExpectedDateChange(changes: RequirementDateChange[], requirementId: number) {
+  return expectedDateChangesFor(changes, requirementId)[0] ?? null;
 }
 /** A requirement leaves every in-flight view only once it has been archived. */
 export function isArchived(r: Pick<Requirement, "archivedAt">) {

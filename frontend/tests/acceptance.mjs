@@ -79,6 +79,27 @@ try {
   assert.equal(r.blocked, true);
   check("Required blocker reason, forward skipping and rollback rejection");
 
+  // 期望日期调整：每次编辑保存都必须填写原因；只有日期变化才写入调整记录。
+  const dateDays = days => todayString(new Date(Date.now() + days * 86400000));
+  const originalDate = dateDays(2);
+  const postponedDate = dateDays(3);
+  const datedId = (await post("createRequirement", { teamId, title: "__验收：日期调整", priority: "medium", expectedDate: originalDate }, 200, cookie)).id;
+  await post("updateRequirement", { id: datedId, title: "__验收：日期调整", priority: "medium", expectedDate: postponedDate }, 400, cookie);
+  await post("updateRequirement", { id: datedId, title: "__验收：日期调整已改", priority: "medium", expectedDate: postponedDate, reason: "联调排期调整" }, 200, cookie);
+  data = await workspace();
+  let datedChanges = data.dateChanges.filter(change => change.requirementId === datedId);
+  assert.equal(datedChanges.length, 1);
+  assert.equal(datedChanges[0].fromDate, originalDate);
+  assert.equal(datedChanges[0].toDate, postponedDate);
+  assert.equal(datedChanges[0].reason, "联调排期调整");
+  assert.equal(datedChanges[0].actorName, "验收产品经理");
+  await post("updateRequirement", { id: datedId, title: "__验收：日期调整仅改标题", priority: "medium", expectedDate: postponedDate, reason: "仅补充标题说明" }, 200, cookie);
+  data = await workspace();
+  datedChanges = data.dateChanges.filter(change => change.requirementId === datedId);
+  assert.equal(datedChanges.length, 1, "日期未变化时不产生调整记录");
+  assert.equal(data.requirements.find(item => item.id === datedId).expectedDate, postponedDate);
+  check("Expected-date change requires a reason and is recorded only when the date moves");
+
   const nextStages = initialStages.filter(s => s.id !== "integration");
   await post("updateTemplate", { teamId, stages: nextStages, migrations: {} }, 400);
   assert.equal((await workspace()).teams.find(t => t.id === teamId).stages.length, 8);
@@ -147,15 +168,30 @@ try {
   page.on("pageerror", e => errors.push(e.message));
   await page.goto(`${base}/teams/${teamId}`, { waitUntil: "networkidle" });
   assert.equal(await page.getByRole("heading", { level: 1 }).textContent(), editedTeamName);
+  const dateChangedRow = page.locator(".requirement-table tbody tr").filter({ hasText: "__验收：日期调整仅改标题" });
+  assert.equal(await dateChangedRow.locator(".badge").filter({ hasText: "日期调整" }).count(), 1, "列表应显示「日期调整」标记");
+  await dateChangedRow.click();
+  await page.locator(".date-change-item .date-change-reason").waitFor();
+  assert.equal(await page.locator(".date-change-item .date-change-reason").textContent(), "联调排期调整");
+  const changeFlow = await page.locator(".date-change-item .date-change-flow").textContent();
+  assert.ok(changeFlow.includes(originalDate.replaceAll("-", ".")), "详情历史应显示调整前的日期");
+  assert.ok(changeFlow.includes(postponedDate.replaceAll("-", ".")), "详情历史应显示调整后的日期");
+  assert.ok(changeFlow.includes("验收产品经理"), "详情历史应显示操作人");
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "新建需求", exact: true }).click();
   const uiTitle = `__验收：浏览器新建_${suffix}`;
   await page.locator("#new-title").fill(uiTitle);
   await page.locator("#new-description").fill("验证真实浏览器表单与数据库持久化");
   await page.locator("#new-owner").fill("浏览器验收");
+  await page.locator("#new-date").click();
+  await page.getByRole("dialog", { name: "期望上线/完成日期" }).getByRole("button", { name: "今天", exact: true }).click();
   await page.getByRole("button", { name: "创建需求", exact: true }).click();
   await page.getByRole("dialog", { name: uiTitle }).waitFor();
   await page.getByRole("button", { name: "编辑信息", exact: true }).click();
   await page.locator("#edit-description").fill("浏览器编辑保存成功");
+  assert.equal(await page.getByRole("button", { name: "保存修改", exact: true }).isDisabled(), true, "未填写修改原因时不能保存编辑");
+  await page.locator("#edit-reason").fill("浏览器验收：补充需求说明");
+  assert.equal(await page.getByRole("button", { name: "保存修改", exact: true }).isDisabled(), false);
   await page.getByRole("button", { name: "保存修改", exact: true }).click();
   await page.getByText("浏览器编辑保存成功", { exact: true }).waitFor();
   await page.getByRole("button", { name: "标记卡点", exact: true }).click();

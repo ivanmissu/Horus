@@ -18,6 +18,10 @@ import {
   PRIORITY_LABELS,
   dateRangeLabel,
   endOfShanghaiWeek,
+  expectedDateChanged,
+  expectedDateChangesFor,
+  fullDate,
+  latestExpectedDateChange,
   isArchived,
   isFocused,
   isHistoricalPendingArchive,
@@ -44,6 +48,21 @@ assert.equal(iso(startOfShanghaiWeek("2026-10-25T16:00:00.000Z")), "2026-10-25T1
 assert.equal(iso(startOfShanghaiMonth(wednesday)), "2026-09-30T16:00:00.000Z");
 assert.equal(iso(addMonths(startOfShanghaiMonth(wednesday), -1)), "2026-08-31T16:00:00.000Z");
 assert.equal(dateRangeLabel("2026-10-19", "2026-10-25"), "10.19 – 10.25");
+// 期望日期调整：空值按「未填写」比较，只有真正变化才产生调整记录。
+assert.equal(fullDate("2026-10-21"), "2026.10.21");
+assert.equal(fullDate(null), "未填写");
+assert.equal(expectedDateChanged(null, ""), false);
+assert.equal(expectedDateChanged("2026-10-21", "2026-10-21"), false);
+assert.equal(expectedDateChanged("2026-10-21", "2026-10-28"), true);
+assert.equal(expectedDateChanged(null, "2026-10-28"), true);
+const dateChanges = [
+  { id: 2, requirementId: 7, fromDate: "2026-10-21", toDate: "2026-10-28", reason: "第二次顺延", actorId: "pm-a", actorName: "甲", createdAt: "2026-10-20T02:00:00.000Z" },
+  { id: 1, requirementId: 7, fromDate: "2026-10-14", toDate: "2026-10-21", reason: "第一次顺延", actorId: "pm-b", actorName: "乙", createdAt: "2026-10-13T02:00:00.000Z" },
+  { id: 3, requirementId: 9, fromDate: "2026-10-01", toDate: "2026-10-02", reason: "其他需求", actorId: "pm-a", actorName: "甲", createdAt: "2026-10-02T02:00:00.000Z" },
+];
+assert.deepEqual(expectedDateChangesFor(dateChanges, 7).map(change => change.id), [2, 1], "同一需求的调整按传入顺序（时间倒序）保留");
+assert.equal(latestExpectedDateChange(dateChanges, 7).reason, "第二次顺延");
+assert.equal(latestExpectedDateChange(dateChanges, 8), null);
 assert.equal(todayString(endOfShanghaiWeek(wednesday)), "2026-10-25", "natural week ends on Sunday");
 assert.equal(todayString(endOfShanghaiWeek("2026-10-25T15:59:59.999Z")), "2026-10-25", "Sunday itself is the last day of its week");
 assert.equal(
