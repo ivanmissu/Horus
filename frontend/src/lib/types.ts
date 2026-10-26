@@ -33,6 +33,8 @@ export type StatsBucket = {
   current: boolean;
   created: number;
   released: number;
+  /** IDs of requirements counted in `released`, ordered by actual release time descending. */
+  releasedIds: number[];
   cancelled: number;
   /** Distinct requirements blocked at least once during this bucket. */
   blocked: number;
@@ -63,6 +65,8 @@ export type StatsTeamRow = {
   color: string;
   created: number;
   released: number;
+  /** IDs of requirements counted in `released`, ordered by actual release time descending. */
+  releasedIds: number[];
   cancelled: number;
   blocked: number;
   archived: number;
@@ -87,6 +91,8 @@ export type StatsData = {
   /** Aggregate flows across the whole visible range, with stock/overdue as of now. */
   range: StatsBucket;
   teams: StatsTeamRow[];
+  /** Distinct requirements referenced by bucket or team `releasedIds`, ordered by actual release time descending. */
+  releasedItems: Requirement[];
   /** In-scope non-cancelled requirements without an expected launch date; excluded from expectedRatio. */
   missingExpected: number;
   /** True when historical lifecycle or blocker data had to be reconstructed. */

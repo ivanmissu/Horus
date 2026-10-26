@@ -325,3 +325,53 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 .focus-tabs{min-width:0;overflow-x:auto;scrollbar-width:none}
 .focus-tabs::-webkit-scrollbar{display:none}
 .focus-tab{flex-shrink:0}
+
+/* 禁用态日期/下拉触发器不响应 hover 边框变色；右侧详情抽屉层级高于居中弹窗（如统计下钻弹窗） */
+.ui-select-trigger.is-disabled:hover,.ui-date-trigger.is-disabled:hover,.ui-time-trigger.is-disabled:hover{border-color:#e1e7f0;background:#faf8fc}
+.ui-select-trigger.is-disabled .ui-select-chevron,.ui-date-trigger.is-disabled .ui-select-chevron,.ui-time-trigger.is-disabled .ui-select-chevron{opacity:.45}
+.drawer-backdrop{z-index:1050}
+
+/* 需求统计：「团队对比」与「周期明细」上线列数字下钻 */
+.stats-drill-trigger{
+  display:inline-flex;align-items:center;justify-content:flex-end;
+  padding:2px 7px;margin:-2px -7px;border:0;border-radius:5px;
+  background:transparent;color:#6f58c2;font-weight:600;font-size:inherit;
+  font-variant-numeric:tabular-nums;cursor:pointer;
+  text-decoration:underline;text-decoration-color:#c8bbea;text-underline-offset:3px;
+  transition:background .15s,color .15s,text-decoration-color .15s;
+}
+.stats-drill-trigger:hover{background:#f2edfc;color:#5740ad;text-decoration-color:#7d66cf}
+.stats-drill-trigger:focus-visible{outline:2px solid #ad9ce6;outline-offset:1px;background:#f2edfc}
+
+.modal-panel.stats-drilldown-modal{width:920px}
+.stats-drilldown-modal .modal-body{padding:18px 22px 20px}
+.stats-drill-summary{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;
+  padding:10px 14px;margin-bottom:14px;
+  border:1px solid #edeaf5;border-radius:8px;background:#faf9fe;
+  font-size:11px;color:#7e8296;
+}
+.stats-drill-summary>span{display:inline-flex;align-items:center;gap:6px}
+.stats-drill-summary strong{font-weight:600;color:#52586c;font-variant-numeric:tabular-nums}
+.stats-drill-summary>span.late strong{color:#c95c63}
+.stats-drill-summary i{width:6px;height:6px;border-radius:50%;background:#b0b5c6;flex-shrink:0}
+.stats-drill-summary i.teal{background:#6fb39d}
+.stats-drill-summary i.blue{background:#7ea4d8}
+.stats-drill-summary i.red{background:#d97f85}
+.stats-drill-summary i.purple{background:#9d86d8}
+.stats-drill-summary i.neutral{background:#b5bac8}
+
+.stats-drill-table-wrap{border:1px solid #eef0f6;border-radius:8px;overflow-x:auto}
+.stats-drill-table{table-layout:auto;min-width:740px}
+.stats-drill-table th{border-top:0}
+.stats-drill-table td{height:58px}
+.stats-drill-table td:first-child{min-width:210px;max-width:290px}
+.stats-drill-table .requirement-title>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats-drill-team{display:inline-flex;align-items:center;font-size:11.5px;color:#6c7387;white-space:nowrap}
+.stats-drill-mobile{display:none;flex-direction:column;gap:10px}
+@media(max-width:768px){
+  .stats-drilldown-modal .modal-body{padding:14px 16px 16px}
+  .stats-drill-table-wrap{display:none}
+  .stats-drill-mobile{display:flex}
+  .stats-drill-mobile .mobile-requirement{border:1px solid #eceef5;border-radius:8px;padding:12px 13px;background:#fff;text-align:left}
+}

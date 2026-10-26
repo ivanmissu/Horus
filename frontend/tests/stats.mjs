@@ -187,5 +187,34 @@ const estimateFlag = buildStats({
 });
 assert.equal(estimateFlag.hasEstimates, true);
 assert.equal(estimateFlag.current.released, 1, "releasedAt falls back to enteredAt for legacy rows");
+assert.deepEqual(estimateFlag.current.releasedIds, [4], "legacy released rows also populate drill-down releasedIds");
+assert.equal(estimateFlag.releasedItems.length, 1);
+
+// ── 上线数据下钻（团队对比 & 周期明细）────────────────────────────────────
+assert.deepEqual(weekly.current.releasedIds, [2]);
+assert.deepEqual(weekly.previous.releasedIds, []);
+assert.deepEqual(weekly.teams.find(team => team.teamId === "platform").releasedIds, [2]);
+assert.deepEqual(weekly.teams.find(team => team.teamId === "product").releasedIds, []);
+assert.deepEqual(weekly.releasedItems.map(item => item.id), [2]);
+for (const bucket of weekly.buckets) {
+  assert.equal(bucket.releasedIds.length, bucket.released, `bucket ${bucket.key} releasedIds matches released count`);
+}
+for (const team of weekly.teams) {
+  assert.equal(team.releasedIds.length, team.released, `team ${team.teamId} releasedIds matches released count`);
+}
+
+// 同一周期内多项上线（含已归档与未归档）按实际上线时间倒序返回，且与团队筛选联动
+assert.deepEqual(
+  alignmentStats.current.releasedIds,
+  [204, 203],
+  "both archived (204) and pending-archive (203) launches appear, ordered newest-first",
+);
+assert.deepEqual(alignmentStats.teams.find(team => team.teamId === "product").releasedIds, [204, 203]);
+assert.deepEqual(alignmentStats.teams.find(team => team.teamId === "platform").releasedIds, []);
+assert.deepEqual(alignmentStats.releasedItems.map(item => item.id), [204, 203]);
+
+const filteredAlignment = buildStats({ requirements: alignmentItems, events: [], teams, now, granularity: "week", periods: 4, teamId: "platform" });
+assert.deepEqual(filteredAlignment.current.releasedIds, [], "team filter scopes period drill-down IDs");
+assert.deepEqual(filteredAlignment.releasedItems, []);
 
 console.log("STATISTICS BUCKET TESTS PASSED");

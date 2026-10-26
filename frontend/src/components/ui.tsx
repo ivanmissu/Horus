@@ -24,7 +24,7 @@ export function EmptyState({ title = "这里暂时没有需求", description = "
   return <div className="empty-state"><span className="empty-icon"><Inbox size={30} strokeWidth={1.5} /></span><h3>{title}</h3><p>{description}</p>{action}</div>;
 }
 export function Spinner() { return <LoaderCircle size={16} className="spin" />; }
-export function Modal({ title, description, children, onClose, footer, wide = false, drawer = false, eyebrow }: { title: string; description?: string; children: ReactNode; onClose: () => void; footer?: ReactNode; wide?: boolean; drawer?: boolean; eyebrow?: ReactNode }) {
+export function Modal({ title, description, children, onClose, footer, wide = false, className = "", drawer = false, eyebrow }: { title: string; description?: string; children: ReactNode; onClose: () => void; footer?: ReactNode; wide?: boolean; className?: string; drawer?: boolean; eyebrow?: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   useEffect(() => { close.current = onClose; }, [onClose]);
@@ -34,7 +34,13 @@ export function Modal({ title, description, children, onClose, footer, wide = fa
     document.body.style.overflow = "hidden";
     const timer = setTimeout(() => panel.current?.focus(), 30);
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close.current();
+      const backdrops = document.querySelectorAll(".modal-backdrop");
+      const topBackdrop = backdrops[backdrops.length - 1];
+      if (topBackdrop && panel.current && !topBackdrop.contains(panel.current)) return;
+      if (event.key === "Escape") {
+        if (document.querySelector("[data-ui-portal]")) return;
+        close.current();
+      }
       if (event.key === "Tab") {
         const nodes = Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]') || []).filter(el => el.offsetParent !== null);
         const first = nodes[0], last = nodes[nodes.length - 1];
@@ -46,7 +52,7 @@ export function Modal({ title, description, children, onClose, footer, wide = fa
     document.addEventListener("keydown", onKey);
     return () => { clearTimeout(timer); document.body.style.overflow = oldOverflow; document.removeEventListener("keydown", onKey); previous?.focus(); };
   }, []);
-  return <div className={`modal-backdrop ${drawer ? "drawer-backdrop" : ""}`} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><div ref={panel} className={`modal-panel ${wide ? "wide" : ""} ${drawer ? "drawer" : ""}`} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title}><header className="modal-header"><div>{eyebrow && <div className="modal-eyebrow">{eyebrow}</div>}<h2>{title}</h2>{description && <p>{description}</p>}</div><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={20} /></button></header><div className="modal-body">{children}</div>{footer && <footer className="modal-footer">{footer}</footer>}</div></div>;
+  return <div className={`modal-backdrop ${drawer ? "drawer-backdrop" : ""}`} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><div ref={panel} className={`modal-panel ${wide ? "wide" : ""} ${drawer ? "drawer" : ""} ${className}`.trim()} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title}><header className="modal-header"><div>{eyebrow && <div className="modal-eyebrow">{eyebrow}</div>}<h2>{title}</h2>{description && <p>{description}</p>}</div><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={20} /></button></header><div className="modal-body">{children}</div>{footer && <footer className="modal-footer">{footer}</footer>}</div></div>;
 }
 
 // ---------- Unified form controls: Select / DatePicker / TimePicker ----------

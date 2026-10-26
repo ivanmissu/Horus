@@ -204,6 +204,19 @@ export function daysOverdue(value: string, now: string | Date = new Date()) {
   return Math.max(0, Math.round((new Date(todayString(now)).getTime() - new Date(value).getTime()) / 86400000));
 }
 export function requirementCode(id: number) { return `HR-${1000 + id}`; }
+/**
+ * 需求编辑时校验期望上线/完成日期未被篡改：
+ * - 未传 expectedDate（undefined）视为不修改，返回 true；
+ * - 传入值与当前已保存值一致（空字符串与 null 等价）视为未修改，返回 true；
+ * - 任何试图新增、清空或更改期望日期的请求均返回 false。
+ */
+export function isExpectedDateUnchanged(currentExpectedDate: string | null | undefined, incomingExpectedDate: unknown) {
+  if (incomingExpectedDate === undefined) return true;
+  const current = currentExpectedDate ?? null;
+  if (incomingExpectedDate === null || incomingExpectedDate === "") return current === null;
+  if (typeof incomingExpectedDate !== "string") return false;
+  return incomingExpectedDate.trim() === current;
+}
 /** 角色：owner 负责人（全局维护）、pm 产品经理（维护绑定团队）、observer 观察员（仅查看绑定团队）。 */
 export const ROLE_LABELS: Record<string, string> = { owner: "团队负责人", pm: "产品经理", observer: "观察员" };
 export function roleLabel(role: string) { return ROLE_LABELS[role] ?? role; }

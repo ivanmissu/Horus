@@ -1,12 +1,13 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { AlarmClock, Archive, ArrowDownRight, ArrowUpRight, Ban, BarChart3, CalendarDays, CircleHelp, CirclePause, Info, Layers3, Minus, RefreshCw, Rocket, Sparkles, Target } from "lucide-react";
+import { AlarmClock, Archive, ArrowDownRight, ArrowUpRight, Ban, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, ChevronsUp, CircleHelp, CirclePause, Equal, Info, Layers3, Minus, RefreshCw, Rocket, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { PageHeading } from "./requirement-views";
 import { useWorkspace } from "./workspace-context";
-import { Badge, EmptyState, Modal, Select, Spinner } from "./ui";
+import { Avatar, Badge, EmptyState, Modal, Select, Spinner } from "./ui";
+import { daysOverdue, isHistoricalPendingArchive, isLateReleased, PRIORITIES, PRIORITY_LABELS, releaseTimeOf, requirementCode, todayString } from "@/lib/domain";
 import { embeddedAuthHeaders } from "@/lib/embedded-session";
-import type { StatsBucket, StatsData, StatsGranularity } from "@/lib/types";
+import type { Requirement, StatsBucket, StatsData, StatsGranularity, Team } from "@/lib/types";
 
 const count = (value: number) => value.toString().padStart(2, "0");
 const ratioText = (value: number | null) => value === null ? "—" : `${Math.round(value * 100)}%`;
@@ -141,14 +142,179 @@ function StockChart({ buckets }: { buckets: StatsBucket[] }) {
   </div>;
 }
 
+type DrilldownTarget =
+  | { kind: "team"; teamId: string }
+  | { kind: "bucket"; bucketKey: string };
+
+function ReleasedDrilldownModal({
+  title,
+  description,
+  eyebrow,
+  items,
+  teams,
+  now,
+  onSelectRequirement,
+  onClose,
+}: {
+  title: string;
+  description: string;
+  eyebrow: ReactNode;
+  items: Requirement[];
+  teams: Team[];
+  now: string;
+  onSelectRequirement: (id: number) => void;
+  onClose: () => void;
+}) {
+  const onTimeCount = items.filter(r => !!r.expectedDate && !isLateReleased(r)).length;
+  const lateCount = items.filter(isLateReleased).length;
+  const noExpectedCount = items.filter(r => !r.expectedDate).length;
+  const archivedCount = items.filter(r => !!r.archivedAt).length;
+  const pendingCount = items.length - archivedCount;
+
+  return <Modal
+    wide
+    className="stats-drilldown-modal"
+    title={title}
+    description={description}
+    eyebrow={eyebrow}
+    onClose={onClose}
+    footer={<>
+      <span className="form-footer-note"><ShieldCheck size={13} />点击列表中的需求可在右侧打开详情抽屉</span>
+      <button className="button" onClick={onClose}>关闭</button>
+    </>}
+  >
+    {!items.length ? <EmptyState title="暂无上线需求" description="当前筛选范围内没有对应的上线记录。" /> : <>
+      <div className="stats-drill-summary" aria-label="上线需求概览">
+        <span><i className="teal" />共 <strong>{items.length}</strong> 项上线</span>
+        <span><i className="blue" />按期 <strong>{onTimeCount}</strong> 项</span>
+        <span className={lateCount > 0 ? "late" : ""}><i className="red" />逾期上线 <strong>{lateCount}</strong> 项</span>
+        {noExpectedCount > 0 && <span><i className="neutral" />未填期望日 <strong>{noExpectedCount}</strong> 项</span>}
+        <span><i className="purple" />已归档 <strong>{archivedCount}</strong> 项 · 待归档 <strong>{pendingCount}</strong> 项</span>
+      </div>
+      <div className="table-scroll stats-drill-table-wrap">
+        <table className="requirement-table stats-drill-table">
+          <thead>
+            <tr>
+              <th>需求名称</th>
+              <th>所属团队</th>
+              <th>优先级</th>
+              <th>负责人</th>
+              <th>期望日期</th>
+              <th>实际上线</th>
+              <th>状态标记</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(r => {
+              const team = teams.find(t => t.id === r.teamId);
+              const actualRelease = r.releasedAt || (r.status === "released" ? releaseTimeOf(r) : null);
+              const releaseDateText = actualRelease ? todayString(actualRelease).replaceAll("-", ".") : "—";
+              const late = isLateReleased(r);
+              const lateDays = late && actualRelease && r.expectedDate ? daysOverdue(r.expectedDate, actualRelease) : 0;
+              return <tr
+                key={r.id}
+                onClick={() => onSelectRequirement(r.id)}
+                tabIndex={0}
+                onKeyDown={event => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelectRequirement(r.id);
+                  }
+                }}
+                aria-label={`查看需求详情：${r.title}`}
+              >
+                <td>
+                  <div className="requirement-title">
+                    <span className={`priority-mark ${r.priority}`} title={PRIORITIES[r.priority]}>
+                      {r.priority === "high" ? <ChevronsUp size={15} /> : r.priority === "medium" ? <Equal size={14} /> : <ChevronDown size={15} />}
+                    </span>
+                    <span title={r.title}>{r.title}</span>
+                  </div>
+                  <div className="requirement-secondary">
+                    <span className="requirement-code">{requirementCode(r.id)}</span>
+                  </div>
+                </td>
+                <td>
+                  <span className="stats-drill-team">
+                    <span className={`stats-team-dot ${team?.color || "purple"}`} />
+                    <span>{team?.name || "—"}</span>
+                  </span>
+                </td>
+                <td>
+                  <Badge tone={r.priority === "high" ? "red" : r.priority === "medium" ? "amber" : "neutral"}>
+                    {PRIORITY_LABELS[r.priority]}优
+                  </Badge>
+                </td>
+                <td>
+                  <span className="owner-cell">
+                    <Avatar name={r.owner} small />
+                    <span>{r.owner || "未指定"}</span>
+                  </span>
+                </td>
+                <td>
+                  <span className={`due-date ${!r.expectedDate ? "missing" : ""}`}>
+                    {r.expectedDate ? r.expectedDate.replaceAll("-", ".") : "未填"}
+                  </span>
+                </td>
+                <td>
+                  <span className={`due-date ${late ? "overdue" : ""}`}>{releaseDateText}</span>
+                  {late && <span className="overdue-note">晚 {lateDays} 天</span>}
+                </td>
+                <td className="flags-cell">
+                  <span className="flag-list">
+                    <Badge tone="green"><Check size={11} />已上线</Badge>
+                    {late && <Badge tone={r.priority === "high" ? "red" : "rose"} dot>逾期上线</Badge>}
+                    {r.archivedAt
+                      ? <Badge tone="neutral">已归档</Badge>
+                      : <Badge tone="amber">{isHistoricalPendingArchive(r, now) ? "历史未归档" : "待归档"}</Badge>}
+                  </span>
+                  <ChevronRight className="row-chevron" size={14} />
+                </td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="stats-drill-mobile">
+        {items.map(r => {
+          const team = teams.find(t => t.id === r.teamId);
+          const actualRelease = r.releasedAt || (r.status === "released" ? releaseTimeOf(r) : null);
+          const releaseDateText = actualRelease ? todayString(actualRelease).replaceAll("-", ".") : "—";
+          const late = isLateReleased(r);
+          return <button type="button" className="mobile-requirement" key={r.id} onClick={() => onSelectRequirement(r.id)}>
+            <div className="mobile-req-heading">
+              <span className={`priority-mark ${r.priority}`}>{r.priority === "high" ? <ChevronsUp size={15} /> : r.priority === "medium" ? <Equal size={14} /> : <ChevronDown size={15} />}</span>
+              <strong>{r.title}</strong>
+              <ChevronRight size={15} />
+            </div>
+            <div className="mobile-req-middle">
+              <span>{requirementCode(r.id)}</span>
+              {team && <span className="stats-drill-team"><span className={`stats-team-dot ${team.color}`} />{team.name}</span>}
+              <Badge tone={r.priority === "high" ? "red" : r.priority === "medium" ? "amber" : "neutral"}>{PRIORITY_LABELS[r.priority]}优</Badge>
+              <Badge tone="green"><Check size={11} />已上线</Badge>
+              {late && <Badge tone={r.priority === "high" ? "red" : "rose"} dot>逾期上线</Badge>}
+              {r.archivedAt ? <Badge tone="neutral">已归档</Badge> : <Badge tone="amber">{isHistoricalPendingArchive(r, now) ? "历史未归档" : "待归档"}</Badge>}
+            </div>
+            <div className="mobile-req-footer">
+              <span><Avatar name={r.owner} small />{r.owner || "未指定"}</span>
+              <span className={late ? "text-red" : ""}><CalendarDays size={12} />期望 {r.expectedDate ? r.expectedDate.replaceAll("-", ".") : "未填"} · 上线 {releaseDateText}</span>
+            </div>
+          </button>;
+        })}
+      </div>
+    </>}
+  </Modal>;
+}
+
 export function StatsPage() {
-  const { data } = useWorkspace();
+  const { data, openDetail, refresh } = useWorkspace();
   const router = useRouter();
   const [granularity, setGranularity] = useState<StatsGranularity>("week");
   const [teamId, setTeamId] = useState("");
   const [stats, setStats] = useState<StatsData | null>(null);
   const [error, setError] = useState("");
   const [rules, setRules] = useState(false);
+  const [drilldown, setDrilldown] = useState<DrilldownTarget | null>(null);
   const [version, setVersion] = useState(0);
   const periods = granularity === "week" ? 12 : 6;
 
@@ -173,25 +339,62 @@ export function StatsPage() {
       })
       .catch((reason: Error) => { if (reason.name !== "AbortError") setError(reason.message); });
     return () => controller.abort();
-  }, [granularity, periods, teamId, version, data.embeddedAuth, router]);
+  }, [granularity, periods, teamId, version, data.now, data.embeddedAuth, router]);
 
   const loading = !stats && !error;
   const reload = () => {
     setStats(null);
     setError("");
     setVersion(value => value + 1);
+    refresh().catch(() => {});
   };
   const switchGranularity = (next: StatsGranularity) => {
     if (next === granularity) return;
+    setDrilldown(null);
     setStats(null);
     setError("");
     setGranularity(next);
   };
   const switchTeam = (next: string) => {
+    setDrilldown(null);
     setStats(null);
     setError("");
     setTeamId(next);
   };
+  const openRequirementFromDrilldown = async (id: number) => {
+    if (!data.requirements.some(item => item.id === id)) {
+      try { await refresh(); } catch { /* Best-effort sync before opening drawer */ }
+    }
+    openDetail(id);
+  };
+
+  const activeDrilldown = (() => {
+    if (!drilldown || !stats) return null;
+    const itemMap = new Map<number, Requirement>();
+    for (const item of stats.releasedItems) itemMap.set(item.id, item);
+    for (const item of data.requirements) itemMap.set(item.id, item);
+    if (drilldown.kind === "team") {
+      const row = stats.teams.find(team => team.teamId === drilldown.teamId);
+      if (!row) return null;
+      const items = row.releasedIds.map(id => itemMap.get(id)).filter((r): r is Requirement => !!r);
+      return {
+        title: `${row.name} · 上线需求（${items.length}）`,
+        description: `${stats.range.label}内推进到正式上线阶段的需求明细。`,
+        eyebrow: <><span className={`stats-team-dot ${row.color}`} /><span>团队对比 · 上线数据下钻</span></>,
+        items,
+      };
+    }
+    const bucket = stats.buckets.find(item => item.key === drilldown.bucketKey);
+    if (!bucket) return null;
+    const selectedTeam = teamId ? data.teams.find(team => team.id === teamId) : undefined;
+    const items = bucket.releasedIds.map(id => itemMap.get(id)).filter((r): r is Requirement => !!r);
+    return {
+      title: `${bucket.label} · 上线需求（${items.length}）`,
+      description: `${selectedTeam ? `「${selectedTeam.name}」在` : ""}该${granularity === "week" ? "自然周" : "自然月"}推进到正式上线阶段的需求明细。`,
+      eyebrow: <><Rocket size={12} /><span>周期明细 · 上线数据下钻</span>{selectedTeam && <><span>·</span><span>{selectedTeam.name}</span></>}</>,
+      items,
+    };
+  })();
   const current = stats?.current;
   const previous = stats?.previous;
   const kpis = current ? [
@@ -266,12 +469,14 @@ export function StatsPage() {
           </div>
 
           <section className="card stats-table-card">
-            <div className="table-card-heading"><div><h2>团队对比<span className="small-label">{stats.range.label}</span></h2><p>区间累计；期末在途与高优逾期为当前值</p></div><span className="subtle">共 {stats.teams.length} 个团队</span></div>
+            <div className="table-card-heading"><div><h2>团队对比<span className="small-label">{stats.range.label}</span></h2><p>区间累计；期末在途与高优逾期为当前值 · 点击团队「上线」数字可下钻明细</p></div><span className="subtle">共 {stats.teams.length} 个团队</span></div>
             <div className="management-table-scroll"><table className="stats-table">
               <thead><tr><th>团队</th><th>新建</th><th>上线</th><th>逾期上线</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>高优逾期</th><th>预期达成率</th></tr></thead>
               <tbody>{stats.teams.map(team => <tr key={team.teamId}>
                 <td><span className={`stats-team-dot ${team.color}`} />{team.name}</td>
-                <td>{team.created}</td><td>{team.released}</td><td title={`其中高优 ${team.lateReleasedHigh} 项`} className={team.lateReleased ? "text-red" : ""}>{team.lateReleased}（高优 {team.lateReleasedHigh}）</td><td>{team.cancelled}</td><td>{team.blocked}</td><td>{team.archived}</td><td>{team.stock}</td><td className={team.overdue ? "text-red" : ""}>{team.overdue}</td>
+                <td>{team.created}</td>
+                <td>{team.released > 0 ? <button type="button" className="stats-drill-trigger" onClick={() => setDrilldown({ kind: "team", teamId: team.teamId })} aria-label={`查看${team.name}${stats.range.label}上线的 ${team.released} 项需求`}>{team.released}</button> : team.released}</td>
+                <td title={`其中高优 ${team.lateReleasedHigh} 项`} className={team.lateReleased ? "text-red" : ""}>{team.lateReleased}（高优 {team.lateReleasedHigh}）</td><td>{team.cancelled}</td><td>{team.blocked}</td><td>{team.archived}</td><td>{team.stock}</td><td className={team.overdue ? "text-red" : ""}>{team.overdue}</td>
                 <td title={`按期 ${team.expectedMet} / 期望日已到 ${team.expectedDue}`}>{ratioText(team.expectedRatio)}</td>
               </tr>)}{!stats.teams.length && <tr><td colSpan={10} className="stats-empty-cell">当前范围内没有团队数据</td></tr>}</tbody>
               <tfoot><tr><td>合计</td><td>{stats.range.created}</td><td>{stats.range.released}</td><td title={`其中高优 ${stats.range.lateReleasedHigh} 项`} className={stats.range.lateReleased ? "text-red" : ""}>{stats.range.lateReleased}（高优 {stats.range.lateReleasedHigh}）</td><td>{stats.range.cancelled}</td><td>{stats.range.blocked}</td><td>{stats.range.archived}</td><td>{stats.range.stock}</td><td>{stats.range.overdue}</td>
@@ -281,18 +486,31 @@ export function StatsPage() {
           </section>
 
           <section className="card stats-table-card">
-            <div className="table-card-heading"><div><h2>周期明细<span className="small-label">最近在前</span></h2><p>逐期核对流入、流出、逾期上线与存量变化</p></div><span className="subtle">上线 / 新建 = 当期上线数 ÷ 当期新建数；预期达成率 = 按期上线数 ÷ 期望日已到数{stats.missingExpected > 0 ? `；另有 ${stats.missingExpected} 项未填期望日期未计入` : ""}</span></div>
+            <div className="table-card-heading"><div><h2>周期明细<span className="small-label">最近在前</span></h2><p>逐期核对流入、流出、逾期上线与存量变化 · 点击各期「上线」数字可下钻明细</p></div><span className="subtle">上线 / 新建 = 当期上线数 ÷ 当期新建数；预期达成率 = 按期上线数 ÷ 期望日已到数{stats.missingExpected > 0 ? `；另有 ${stats.missingExpected} 项未填期望日期未计入` : ""}</span></div>
             <div className="management-table-scroll"><table className="stats-table stats-period-table">
               <thead><tr><th>周期</th><th>新建</th><th>上线</th><th>逾期上线（高优）</th><th>取消</th><th>卡点</th><th>归档</th><th>期末在途</th><th>净增</th><th>上线 / 新建</th><th>预期达成率</th></tr></thead>
               <tbody>{[...stats.buckets].reverse().map(bucket => <tr key={bucket.key} className={bucket.current ? "current" : ""}>
                 <td><span>{bucket.label}</span>{bucket.current && <Badge tone="blue">进行中</Badge>}</td>
-                <td>{bucket.created}</td><td>{bucket.released}</td><td title={`其中高优 ${bucket.lateReleasedHigh} 项`} className={bucket.lateReleased ? "text-red" : ""}>{bucket.lateReleased}（高优 {bucket.lateReleasedHigh}）</td><td>{bucket.cancelled}</td><td>{bucket.blocked}</td><td>{bucket.archived}</td><td>{bucket.stock}</td>
+                <td>{bucket.created}</td>
+                <td>{bucket.released > 0 ? <button type="button" className="stats-drill-trigger" onClick={() => setDrilldown({ kind: "bucket", bucketKey: bucket.key })} aria-label={`查看 ${bucket.label} 上线的 ${bucket.released} 项需求`}>{bucket.released}</button> : bucket.released}</td>
+                <td title={`其中高优 ${bucket.lateReleasedHigh} 项`} className={bucket.lateReleased ? "text-red" : ""}>{bucket.lateReleased}（高优 {bucket.lateReleasedHigh}）</td><td>{bucket.cancelled}</td><td>{bucket.blocked}</td><td>{bucket.archived}</td><td>{bucket.stock}</td>
                 <td className={bucket.net < 0 ? "text-red" : ""}>{bucket.net > 0 ? "+" : ""}{bucket.net}</td><td>{ratioText(bucket.releaseRatio)}</td>
                 <td title={`按期 ${bucket.expectedMet} / 期望日已到 ${bucket.expectedDue}`}>{ratioText(bucket.expectedRatio)}</td>
               </tr>)}</tbody>
             </table></div>
           </section>
         </> : <section className="card stats-loading"><EmptyState title="还没有可统计的需求" description="新建需求并推进状态后，这里会自动汇总。" /></section>}
+
+    {activeDrilldown && <ReleasedDrilldownModal
+      title={activeDrilldown.title}
+      description={activeDrilldown.description}
+      eyebrow={activeDrilldown.eyebrow}
+      items={activeDrilldown.items}
+      teams={data.teams}
+      now={data.now}
+      onSelectRequirement={openRequirementFromDrilldown}
+      onClose={() => setDrilldown(null)}
+    />}
 
     {rules && <Modal title="需求统计口径" description="自然周、生命周期事件与存量，一次讲清。" onClose={() => setRules(false)}>
       <div className="rules-list">

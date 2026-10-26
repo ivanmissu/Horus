@@ -6,7 +6,7 @@ import { teams, members, requirements, auditLogs, requirementEvents, notificatio
 import { loadWorkspace } from "@/lib/data";
 import { isPreviewMode } from "@/lib/preview";
 import { getActor, AppError, assertOwner, assertTeam } from "@/lib/auth";
-import { creationTimeForCycle, DEFAULT_PRIORITY, DEFAULT_STAGES, type RequirementCycle } from "@/lib/domain";
+import { creationTimeForCycle, DEFAULT_PRIORITY, DEFAULT_STAGES, isExpectedDateUnchanged, type RequirementCycle } from "@/lib/domain";
 import { sendDigest, validateWebhook } from "@/lib/notifications";
 import type { Stage } from "@/lib/types";
 
@@ -103,7 +103,10 @@ export async function POST(request: NextRequest) {
           patch.archivedAt = now;
           events.push({ type: "archived" });
         } else if (action === "updateRequirement") {
-          patch = { ...patch, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate) };
+          if (!isExpectedDateUnchanged(current.expectedDate, body.expectedDate)) {
+            throw new AppError("期望上线/完成日期创建后不可修改");
+          }
+          patch = { ...patch, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40) };
         } else if (action === "advance") {
           const [team] = await tx.select().from(teams).where(eq(teams.id, current.teamId));
           const target = team.stages.findIndex(s => s.id === body.stageId);
