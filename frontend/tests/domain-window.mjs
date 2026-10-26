@@ -19,6 +19,7 @@ import {
   dateRangeLabel,
   endOfShanghaiWeek,
   isArchived,
+  isExpectedDateUnchanged,
   isFocused,
   isHistoricalPendingArchive,
   isInFlight,
@@ -151,5 +152,18 @@ const scheduled = { status: "active", createdAt: "2026-10-26T01:00:00.000Z", blo
 assert.equal(isAnyOverdue(scheduled, wednesday), false, "下周待启动不参与逾期");
 assert.equal(isOverdue(scheduled, wednesday), false);
 assert.equal(isFocused(scheduled, wednesday), false, "下周待启动不进入风险高亮");
+
+// 编辑需求时锁定期望上线/完成日期：任何角色或历史空值均不可更改。
+assert.equal(isExpectedDateUnchanged("2026-10-30", undefined), true, "编辑表单不传 expectedDate 视为保持不变");
+assert.equal(isExpectedDateUnchanged("2026-10-30", "2026-10-30"), true, "回传相同日期允许通过");
+assert.equal(isExpectedDateUnchanged("2026-10-30", " 2026-10-30 "), true);
+assert.equal(isExpectedDateUnchanged("2026-10-30", "2026-11-01"), false, "禁止修改已有期望日期");
+assert.equal(isExpectedDateUnchanged("2026-10-30", ""), false, "禁止清空已有期望日期");
+assert.equal(isExpectedDateUnchanged("2026-10-30", null), false, "禁止将已有期望日期置空");
+assert.equal(isExpectedDateUnchanged(null, undefined), true, "历史未填期望日期的老需求可直接编辑其他字段");
+assert.equal(isExpectedDateUnchanged(null, null), true);
+assert.equal(isExpectedDateUnchanged(null, ""), true);
+assert.equal(isExpectedDateUnchanged(null, "2026-10-30"), false, "历史未填期望日期同样锁定，禁止补填");
+assert.equal(isExpectedDateUnchanged("2026-10-30", 20261030), false);
 
 console.log("DOMAIN NATURAL-WEEK TESTS PASSED");

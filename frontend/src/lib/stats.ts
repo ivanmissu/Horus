@@ -126,6 +126,7 @@ type WindowMetrics = Omit<StatsBucket, "key" | "label" | "shortLabel" | "start" 
 function windowMetrics(startMs: number, asOfMs: number, points: Point[], intervals: Map<number, Interval[]>): WindowMetrics {
   let created = 0;
   let released = 0;
+  const releasedPoints: { id: number; time: number }[] = [];
   let cancelled = 0;
   let blocked = 0;
   let archived = 0;
@@ -142,6 +143,7 @@ function windowMetrics(startMs: number, asOfMs: number, points: Point[], interva
     if (inWindow(point.created)) created += 1;
     if (point.released !== null && inWindow(point.released)) {
       released += 1;
+      releasedPoints.push({ id: point.requirement.id, time: point.released });
       const expected = point.requirement.expectedDate;
       const releasedDate = todayString(new Date(point.released));
       if (expected && releasedDate > expected.slice(0, 10)) {
@@ -168,8 +170,9 @@ function windowMetrics(startMs: number, asOfMs: number, points: Point[], interva
       if (releasedDate !== null && releasedDate <= expected) expectedMet += 1;
     }
   }
+  releasedPoints.sort((a, b) => b.time - a.time || b.id - a.id);
   return {
-    created, released, cancelled, blocked, archived, overdue, lateReleased, lateReleasedHigh, stock,
+    created, released, releasedIds: releasedPoints.map(item => item.id), cancelled, blocked, archived, overdue, lateReleased, lateReleasedHigh, stock,
     net: created - cancelled - archived,
     releaseRatio: created ? released / created : null,
     expectedDue, expectedMet, expectedRatio: expectedDue ? expectedMet / expectedDue : null,
@@ -214,6 +217,7 @@ export function buildStats(input: StatsInput): StatsData {
       color: team.color,
       created: metrics.created,
       released: metrics.released,
+      releasedIds: metrics.releasedIds,
       cancelled: metrics.cancelled,
       blocked: metrics.blocked,
       archived: metrics.archived,
@@ -226,6 +230,15 @@ export function buildStats(input: StatsInput): StatsData {
       expectedRatio: metrics.expectedRatio,
     };
   }).sort((a, b) => b.created - a.created || a.name.localeCompare(b.name, "zh-CN"));
+  const byId = new Map(requirements.map(item => [item.id, item]));
+  const seenReleasedIds = new Set<number>([
+    ...range.releasedIds,
+    ...buckets.flatMap(bucket => bucket.releasedIds),
+    ...teamRows.flatMap(team => team.releasedIds),
+  ]);
+  const releasedItems = [...seenReleasedIds]
+    .map(id => byId.get(id))
+    .filter((item): item is Requirement => !!item);
   const missingExpected = requirements.filter(item => item.status !== "cancelled" && !item.expectedDate).length;
   return {
     granularity,
@@ -238,6 +251,7 @@ export function buildStats(input: StatsInput): StatsData {
     buckets,
     range,
     teams: teamRows,
+    releasedItems,
     missingExpected,
     hasEstimates: lifecycleEstimates || blockEstimates || input.events.some(event => event.estimated),
   };
