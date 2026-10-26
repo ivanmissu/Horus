@@ -123,6 +123,33 @@ export function isInFlight(r: Pick<Requirement, "archivedAt">) {
 export function canArchive(r: Pick<Requirement, "status" | "archivedAt">) {
   return r.status === "released" && !r.archivedAt;
 }
+/** 实际上线时间；旧数据缺少 releasedAt 时用进入末阶段的 enteredAt 估算（与逾期上线、统计口径一致）。 */
+export function releaseTimeOf(r: Pick<Requirement, "releasedAt" | "enteredAt">) {
+  return r.releasedAt || r.enteredAt || null;
+}
+/**
+ * 历史未归档：已上线未归档，且实际上线时间早于本周一 00:00（北京时间）。
+ * 本周内上线的待归档仍留在主列表；到下周一自动转入历史。无上线时间可考时不判历史，避免误删主列表。
+ */
+export function isHistoricalPendingArchive(
+  r: Pick<Requirement, "status" | "archivedAt" | "releasedAt" | "enteredAt">,
+  now: string | Date = new Date(),
+) {
+  if (!canArchive(r)) return false;
+  const releasedAt = releaseTimeOf(r);
+  if (!releasedAt) return false;
+  return new Date(releasedAt).getTime() < startOfShanghaiWeek(now).getTime();
+}
+/**
+ * 主列表在途：未归档且非历史未归档（仍含下周待启动与本周已上线待归档）。
+ * 工作台 / 团队详情 / 所有需求的主列表与相关在途计数用此口径；{@link isInFlight} 本身不变，统计页仍按未归档计存量。
+ */
+export function isMainInFlight(
+  r: Pick<Requirement, "status" | "archivedAt" | "releasedAt" | "enteredAt">,
+  now: string | Date = new Date(),
+) {
+  return isInFlight(r) && !isHistoricalPendingArchive(r, now);
+}
 /**
  * 「本周新建」= created in the current natural week (Monday 00:00 Asia/Shanghai .. now)
  * and not cancelled. Released and archived requirements stay included; cancelled
@@ -154,7 +181,7 @@ export function isAnyOverdue(r: Pick<Requirement, "status" | "expectedDate" | "c
 /** 已上线但实际上线日期晚于期望日期；旧数据缺少 releasedAt 时用进入末阶段的 enteredAt 估算。 */
 export function isLateReleased(r: Pick<Requirement, "status" | "expectedDate" | "releasedAt" | "enteredAt">) {
   if (r.status !== "released" || !r.expectedDate) return false;
-  const actualRelease = r.releasedAt || r.enteredAt;
+  const actualRelease = releaseTimeOf(r);
   if (!actualRelease) return false;
   return todayString(actualRelease) > r.expectedDate.slice(0, 10);
 }

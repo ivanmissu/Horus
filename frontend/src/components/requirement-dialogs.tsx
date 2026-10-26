@@ -5,7 +5,7 @@ import { Archive, ArrowRight, CalendarDays, Check, ChevronRight, CirclePause, Co
 import { useWorkspace } from "./workspace-context";
 import { Avatar, Badge, Modal, Spinner, TeamIcon, Select, DatePicker } from "./ui";
 import { RequirementFlags } from "./requirement-views";
-import { canArchive, canMaintain, daysOverdue, daysSince, DEFAULT_PRIORITY, DEFAULT_REQUIREMENT_CYCLE, isAnyOverdue, isScheduled, PRIORITIES, REQUIREMENT_CYCLES, requirementCode, todayString } from "@/lib/domain";
+import { canArchive, canMaintain, daysOverdue, daysSince, DEFAULT_PRIORITY, DEFAULT_REQUIREMENT_CYCLE, isAnyOverdue, isHistoricalPendingArchive, isScheduled, PRIORITIES, REQUIREMENT_CYCLES, requirementCode, todayString } from "@/lib/domain";
 import { selectableFloor } from "@/lib/calendar";
 
 export function CreateRequirement({ teamId, onClose }: { teamId: string; onClose: () => void }) {
@@ -70,7 +70,7 @@ export function RequirementDetail({ id, onClose }: { id: number; onClose: () => 
       {archiving && archivable && <div className="inline-action-box cancel-confirm desktop-edit"><h3><Archive size={16} />确认归档此需求？</h3><p>归档后将离开所有在途视图，记录只读保留供查阅，且不可撤销。</p><div className="inline-actions"><button className="button small" onClick={() => setArchiving(false)}>暂不归档</button><button className="button primary small" disabled={busy} onClick={archive}>{busy && <Spinner />}确认归档</button></div></div>}
       <section className="detail-section description-section"><div className="detail-section-heading"><h3>需求描述</h3></div><p>{r.description || "还没有补充描述。清晰的背景与目标，有助于团队理解需求。"}</p></section>
       {r.archivedAt && <div className="archive-detail-note"><ShieldCheck size={16} /><div><strong>{r.status === "released" ? "已顺利交付，已归档" : "已取消，保留记录"}</strong><p>归档于 {r.archivedAt.slice(0, 10).replaceAll("-", ".")}，不再出现在工作台与在途列表。</p></div></div>}
-      {r.status === "released" && !r.archivedAt && <div className="archive-detail-note"><Rocket size={16} /><div><strong>已顺利交付，等待归档</strong><p>需求已上线，仍保留在在途列表中；确认归档后将离开在途视图。</p></div></div>}
+      {r.status === "released" && !r.archivedAt && <div className="archive-detail-note"><Rocket size={16} /><div><strong>已顺利交付，等待归档</strong><p>{isHistoricalPendingArchive(r, data.now) ? "需求已在本周一前上线，现位于「历史未归档」中；确认归档后将离开该视图。" : "需求已上线，仍保留在在途列表中；若下周仍未归档，将转入「历史未归档」。"}</p></div></div>}
       <div className="detail-update">最近更新于 {new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(r.updatedAt))}<span>操作人：{data.members.find(m => m.id === r.updatedBy)?.name || "系统"}</span></div><div className="mobile-readonly-note"><ShieldCheck size={13} />当前为手机只读模式，请在电脑端维护需求。</div>
     </>}
   </Modal>;

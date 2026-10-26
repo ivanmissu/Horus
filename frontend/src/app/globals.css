@@ -320,3 +320,8 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 /* 状态标记一行放不下时在状态列内换行，避免撑出表格横向滚动条（如同时出现已上线+逾期上线+待归档） */
 .flags-cell .flag-list{display:flex;flex-wrap:wrap;row-gap:4px}
 .flags-cell .badge{flex-shrink:0}
+
+/* 工作台页签增至六个（含历史未归档）后，窄屏内页签行可横向滚动，避免撑宽页面 */
+.focus-tabs{min-width:0;overflow-x:auto;scrollbar-width:none}
+.focus-tabs::-webkit-scrollbar{display:none}
+.focus-tab{flex-shrink:0}

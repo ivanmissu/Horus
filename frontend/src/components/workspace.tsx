@@ -9,7 +9,7 @@ import { Dashboard, RequirementsPage, TeamPage } from "./requirement-views";
 import { StatsPage } from "./stats-views";
 import { CreateRequirement, RequirementDetail } from "./requirement-dialogs";
 import { MembersPage, NotificationsPage, StagesPage } from "./management";
-import { isAnyOverdue, isInFlight, isScheduled, requirementCode, roleLabel } from "@/lib/domain";
+import { isAnyOverdue, isMainInFlight, isScheduled, requirementCode, roleLabel } from "@/lib/domain";
 import type { WorkspaceData } from "@/lib/types";
 import { embeddedAuthHeaders, EMBEDDED_SESSION_KEY } from "@/lib/embedded-session";
 
@@ -29,7 +29,8 @@ function WorkspaceShell() {
   const team = path.startsWith("/teams/") ? data.teams.find(t => t.id === path.split("/")[2]) : undefined;
   const title = path === "/" ? "工作台" : path === "/stats" ? "需求统计" : path === "/requirements" ? "所有需求" : path === "/archive" ? "归档历史" : team?.name || (path.endsWith("stages") ? "阶段模板" : path.endsWith("members") ? "成员与团队" : "通知设置");
   const active = data.requirements.filter(r => r.status === "active");
-  const inFlight = data.requirements.filter(isInFlight);
+  // 侧栏「我的团队」计数与主列表一致：剔除本周一前已上线的历史未归档。
+  const inFlight = data.requirements.filter(r => isMainInFlight(r, data.now));
   const alerts = active.filter(r => !isScheduled(r, data.now) && (r.blocked || isAnyOverdue(r, data.now)));
   const searchResults = query.trim() ? data.requirements.filter(r => `${r.title} ${r.owner} ${requirementCode(r.id)}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 7) : [];
   useEffect(() => {
@@ -70,7 +71,7 @@ function WorkspaceShell() {
     </div>
     {createFor !== null && <CreateRequirement teamId={createFor} onClose={closeCreate} />}
     {detailId !== null && <RequirementDetail key={detailId} id={detailId} onClose={() => openDetail(null)} />}
-    {help && <Modal title="你好，欢迎来到 Horus" description="不追问每个细节，也能掌握每一步进展。" onClose={() => setHelp(false)}><div className="guide-intro"><HorusLogo compact /><p>Horus 把研发流程中的关键节点变成里程碑。每天花一分钟，让团队的进展与风险一目了然。</p></div><div className="guide-rule"><span className="rule-number blue">01</span><div><h3>本周新建</h3><p>统计本周一 00:00（北京时间）起创建且未取消的需求（含已上线与已归档），处于「需求评审」阶段时显示蓝色「新建」标记，也可点击卡片或标签快速筛选未归档项。</p></div></div><div className="guide-rule"><span className="rule-number orange">02</span><div><h3>存在卡点</h3><p>不论创建时间，所有卡点需求都会高亮提示，并展示卡点原因。</p></div></div><div className="guide-rule"><span className="rule-number red">03</span><div><h3>逾期</h3><p>超过期望上线/完成日期仍未收尾的需求都会标记为逾期，其中高优先级计入「高优逾期」，优先进入你的视线。</p></div></div><div className="guide-note"><Info size={16} /><p>工作台默认列出全部未归档需求并按团队分组；本周新建、卡点、逾期以标记高亮，可一键筛选。阶段可向前跳过、不可回退；到达最后一个阶段标记上线，需在需求详情中手动归档。手机端提供只读浏览，数据维护请使用桌面端。</p></div>{data.demo && <div className="demo-note">{data.preview ? "当前为只读预览，示例数据不会保存。配置数据库后可使用完整功能。" : "当前为可交互演示空间，操作会保存到数据库。正式部署可开启强制账号登录。"}</div>}</Modal>}
+    {help && <Modal title="你好，欢迎来到 Horus" description="不追问每个细节，也能掌握每一步进展。" onClose={() => setHelp(false)}><div className="guide-intro"><HorusLogo compact /><p>Horus 把研发流程中的关键节点变成里程碑。每天花一分钟，让团队的进展与风险一目了然。</p></div><div className="guide-rule"><span className="rule-number blue">01</span><div><h3>本周新建</h3><p>统计本周一 00:00（北京时间）起创建且未取消的需求（含已上线与已归档），处于「需求评审」阶段时显示蓝色「新建」标记，也可点击卡片或标签快速筛选未归档项。</p></div></div><div className="guide-rule"><span className="rule-number orange">02</span><div><h3>存在卡点</h3><p>不论创建时间，所有卡点需求都会高亮提示，并展示卡点原因。</p></div></div><div className="guide-rule"><span className="rule-number red">03</span><div><h3>逾期</h3><p>超过期望上线/完成日期仍未收尾的需求都会标记为逾期，其中高优先级计入「高优逾期」，优先进入你的视线。</p></div></div><div className="guide-note"><Info size={16} /><p>工作台默认列出本周在途需求并按团队分组（含本周已上线待归档；本周一前已上线的在「历史未归档」页签）；本周新建、卡点、逾期以标记高亮，可一键筛选。阶段可向前跳过、不可回退；到达最后一个阶段标记上线，需在需求详情中手动归档。手机端提供只读浏览，数据维护请使用桌面端。</p></div>{data.demo && <div className="demo-note">{data.preview ? "当前为只读预览，示例数据不会保存。配置数据库后可使用完整功能。" : "当前为可交互演示空间，操作会保存到数据库。正式部署可开启强制账号登录。"}</div>}</Modal>}
     {toast && <div key={toast.id} role="status" className={`toast ${toast.type}`}>{toast.type === "success" ? <CheckCircle2 size={19} /> : toast.type === "error" ? <AlertCircle size={19} /> : <Info size={19} />}<span>{toast.message}</span></div>}
   </div>;
 }

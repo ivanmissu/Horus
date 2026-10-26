@@ -20,8 +20,11 @@ import {
   endOfShanghaiWeek,
   isArchived,
   isFocused,
+  isHistoricalPendingArchive,
   isInFlight,
+  isMainInFlight,
   isNew,
+  releaseTimeOf,
   shanghaiClock,
   showNewBadge,
   startOfShanghaiMonth,
@@ -94,6 +97,23 @@ assert.equal(isFocused({ status: "active", createdAt: "2026-09-01T00:00:00.000Z"
 assert.equal(isFocused({ status: "active", createdAt: "2026-10-18T15:59:59.999Z", blocked: false, priority: "low", expectedDate: null }, wednesday), false);
 assert.equal(isFocused({ status: "active", createdAt: "2026-10-18T16:00:00.000Z", blocked: false, priority: "low", expectedDate: null }, wednesday), true);
 
+// 历史未归档：已上线未归档且实际上线时间早于本周一 00:00（北京时间）；本周一零点整上线仍算本周。
+const releasedReq = (releasedAt, enteredAt = releasedAt, archivedAt = null, status = "released") => ({ status, archivedAt, releasedAt, enteredAt });
+assert.equal(isHistoricalPendingArchive(releasedReq("2026-10-18T15:59:59.999Z"), wednesday), true, "上周日 23:59 上线属于历史未归档");
+assert.equal(isHistoricalPendingArchive(releasedReq("2026-10-18T16:00:00.000Z"), wednesday), false, "本周一 00:00 上线仍留在主列表");
+assert.equal(isHistoricalPendingArchive(releasedReq("2026-10-20T02:00:00.000Z"), wednesday), false, "本周内上线的待归档不进历史");
+assert.equal(isHistoricalPendingArchive(releasedReq(null, "2026-10-12T02:00:00.000Z"), wednesday), true, "旧数据无 releasedAt 时用 enteredAt 兜底判定");
+assert.equal(isHistoricalPendingArchive(releasedReq(null, "2026-10-19T02:00:00.000Z"), wednesday), false);
+assert.equal(isHistoricalPendingArchive(releasedReq("2026-10-12T02:00:00.000Z", "2026-10-12T02:00:00.000Z", "2026-10-15T02:00:00.000Z"), wednesday), false, "已归档不再是待归档");
+assert.equal(isHistoricalPendingArchive({ status: "active", archivedAt: null, releasedAt: null, enteredAt: "2026-10-12T02:00:00.000Z" }, wednesday), false, "推进中的老需求不进历史未归档");
+assert.equal(isHistoricalPendingArchive({ status: "cancelled", archivedAt: "2026-10-12T02:00:00.000Z", releasedAt: null, enteredAt: "2026-10-01T02:00:00.000Z" }, wednesday), false);
+assert.equal(releaseTimeOf({ releasedAt: "2026-10-12T02:00:00.000Z", enteredAt: "2026-10-01T02:00:00.000Z" }), "2026-10-12T02:00:00.000Z");
+assert.equal(releaseTimeOf({ releasedAt: null, enteredAt: "2026-10-01T02:00:00.000Z" }), "2026-10-01T02:00:00.000Z");
+// 主列表在途剔除历史未归档，但仍含推进中与本周待归档；isInFlight 本身不变（统计存量仍含历史）。
+assert.equal(isMainInFlight(releasedReq("2026-10-12T02:00:00.000Z"), wednesday), false);
+assert.equal(isMainInFlight(releasedReq("2026-10-20T02:00:00.000Z"), wednesday), true);
+assert.equal(isMainInFlight({ status: "active", archivedAt: null, releasedAt: null, enteredAt: "2026-09-01T02:00:00.000Z" }, wednesday), true);
+assert.equal(isMainInFlight(releasedReq("2026-10-12T02:00:00.000Z", "2026-10-12T02:00:00.000Z", "2026-10-15T02:00:00.000Z"), wednesday), false);
 assert.equal(isArchived({ archivedAt: "2026-10-16T00:00:00.000Z" }), true);
 assert.equal(isArchived({ archivedAt: null }), false);
 assert.equal(isInFlight({ archivedAt: null }), true);
