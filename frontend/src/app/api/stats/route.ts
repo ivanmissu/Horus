@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         estimated: requirementEvents.estimated,
       }).from(requirementEvents),
     ]);
-    // 统计同样按账号可见范围过滤：产品经理与观察员只统计绑定团队。
+    // 统计同样按账号可见范围过滤：产品经理与业务负责人只统计绑定团队。
     const visibleTeams = allTeams.filter(team => canViewTeam(actor, team.id));
     const visibleRequirements = allRequirements.filter(item => canViewTeam(actor, item.teamId));
     const visibleIds = new Set(visibleRequirements.map(item => item.id));

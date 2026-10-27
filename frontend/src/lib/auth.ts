@@ -40,9 +40,9 @@ export async function getActor(): Promise<{ actor: Member; demo: boolean }> {
   return { actor: publicMember(owner), demo: true };
 }
 export function assertOwner(actor: Member) {
-  if (actor.role !== "owner") throw new AppError("此操作仅限团队负责人", 403);
+  if (actor.role !== "owner") throw new AppError("此操作仅限空间管理员", 403);
 }
 export function assertTeam(actor: Member, teamId: string) {
-  if (actor.role === "observer") throw new AppError("观察员账号仅可查看，不能修改数据", 403);
+  if (actor.role === "observer") throw new AppError("业务负责人账号仅可查看，不能修改数据", 403);
   if (actor.role !== "owner" && !actor.teamIds.includes(teamId)) throw new AppError("你没有维护该团队的权限", 403);
 }

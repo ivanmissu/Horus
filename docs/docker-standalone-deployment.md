@@ -72,7 +72,7 @@ docker run -d \
   -e DATABASE_URL='mysql://horus:<应用密码>@mysql:3306/horus' \
   -e HORUS_DEMO_MODE=false \
   -e HORUS_INIT_OWNER_USERNAME=admin \
-  -e HORUS_INIT_OWNER_NAME='团队负责人' \
+  -e HORUS_INIT_OWNER_NAME='空间管理员' \
   -e APP_URL='http://<服务器IP>:3000' \
   -e HORUS_DB_CONNECTION_LIMIT=10 \
   -e TZ=Asia/Shanghai \
@@ -93,7 +93,7 @@ docker run -d \
 |---|---|---|---|
 | `DATABASE_URL` | ✅ | — | `mysql://horus:<密码>@mysql:3306/horus`；密码特殊字符需百分号编码 |
 | `HORUS_DEMO_MODE` | ✅ 生产固定 | `false` | 生产红线，禁止 `true` |
-| `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | 可选 | `admin` / `团队负责人` | 仅首次建负责人有效 |
+| `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | 可选 | `admin` / `空间管理员` | 仅首次建负责人有效 |
 | `APP_URL` | ✅ | — | 同事实际打开的地址，钉钉链接兜底 |
 | `HORUS_DB_CONNECTION_LIMIT` | 可选 | `10` | 连接池上限 |
 | `HORUS_DB_PUSH` / `HORUS_DB_INIT` | 可选 | `true` | 表已由外部 SQL 建好时设 `false`（缺表仍拒绝启动）；仅容器入口读取 |

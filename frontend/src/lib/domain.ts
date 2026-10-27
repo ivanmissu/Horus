@@ -217,14 +217,14 @@ export function isExpectedDateUnchanged(currentExpectedDate: string | null | und
   if (typeof incomingExpectedDate !== "string") return false;
   return incomingExpectedDate.trim() === current;
 }
-/** 角色：owner 负责人（全局维护）、pm 产品经理（维护绑定团队）、observer 观察员（仅查看绑定团队）。 */
-export const ROLE_LABELS: Record<string, string> = { owner: "团队负责人", pm: "产品经理", observer: "观察员" };
+/** 角色：owner 空间管理员（全局维护）、pm 产品经理（维护绑定团队）、observer 业务负责人（仅查看绑定团队）。 */
+export const ROLE_LABELS: Record<string, string> = { owner: "空间管理员", pm: "产品经理", observer: "业务负责人" };
 export function roleLabel(role: string) { return ROLE_LABELS[role] ?? role; }
-/** 可查看某团队的数据：负责人全部；产品经理与观察员仅限绑定团队。 */
+/** 可查看某团队的数据：空间管理员全部；产品经理与业务负责人仅限绑定团队。 */
 export function canViewTeam(actor: { role: string; teamIds: string[] }, teamId: string) {
   return actor.role === "owner" || actor.teamIds.includes(teamId);
 }
-/** 可维护某团队需求：仅负责人与绑定该团队的产品经理；观察员永远不可。 */
+/** 可维护某团队需求：仅空间管理员与绑定该团队的产品经理；业务负责人永远不可。 */
 export function canMaintain(actor: { role: string; teamIds: string[] }, teamId: string) {
   return actor.role === "owner" || (actor.role === "pm" && actor.teamIds.includes(teamId));
 }

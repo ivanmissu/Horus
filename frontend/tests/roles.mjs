@@ -19,15 +19,15 @@ assert.equal(canMaintain(pm, "data"), false);
 assert.equal(canCreateRequirement(pm), true);
 assert.equal(canCreateRequirement(unboundPm), false);
 
-// 观察员：只能查看绑定团队，任何团队都不能维护、不能新建
+// 业务负责人：只能查看绑定团队，任何团队都不能维护、不能新建
 assert.equal(canViewTeam(observer, "platform"), true);
 assert.equal(canViewTeam(observer, "data"), false);
 assert.equal(canMaintain(observer, "platform"), false);
 assert.equal(canMaintain(observer, "data"), false);
 assert.equal(canCreateRequirement(observer), false);
 
-assert.equal(roleLabel("observer"), "观察员");
+assert.equal(roleLabel("observer"), "业务负责人");
 assert.equal(roleLabel("pm"), "产品经理");
-assert.equal(roleLabel("owner"), "团队负责人");
+assert.equal(roleLabel("owner"), "空间管理员");
 
 console.log("ROLE PERMISSION TESTS PASSED");

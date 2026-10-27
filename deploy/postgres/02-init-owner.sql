@@ -5,7 +5,7 @@ INSERT INTO "horus_members" (
   "id", "name", "username", "role", "team_ids", "password_hash", "active", "created_at"
 )
 VALUES (
-  'owner', '团队负责人', 'admin', 'owner', '[]'::jsonb, NULL, TRUE,
+  'owner', '空间管理员', 'admin', 'owner', '[]'::jsonb, NULL, TRUE,
   to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
 )
 ON CONFLICT ("id") DO NOTHING;
