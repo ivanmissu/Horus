@@ -19,6 +19,7 @@
     "test:digest": "node --experimental-strip-types tests/digest-claim.mjs",
     "test:digest-content": "node --experimental-strip-types tests/digest-content.mjs",
     "test:calendar": "node --experimental-strip-types tests/calendar.mjs",
+    "test:reveal-scroll": "node --experimental-strip-types tests/reveal-scroll.mjs",
     "test:deployment": "node --experimental-strip-types tests/deployment.mjs",
     "test:schema-sql": "node tests/schema-sql.mjs",
     "test:notification-settings": "node --experimental-strip-types tests/notification-settings.mjs",

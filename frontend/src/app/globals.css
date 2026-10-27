@@ -402,3 +402,6 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 .pool-readonly-note{display:flex;gap:6px;margin-top:15px;font-size:9.5px;color:#a0a3b2;line-height:1.7;align-items:flex-start}
 .pool-readonly-note>svg{margin-top:2px;flex-shrink:0}
 @media(max-width:768px){.pool-table .col-title{width:auto}.pool-row-actions{gap:6px}.pool-decision{margin-top:16px;font-size:9px}.pool-tabs-note{display:none}}
+
+/* 内联确认区被脚本聚焦时不要出现额外描边，视觉上仍由滚动位置提示「已展开」 */
+.inline-action-box:focus{outline:none}
