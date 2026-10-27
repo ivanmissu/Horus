@@ -6,7 +6,7 @@ import { teams, members, requirements, requirementPool, auditLogs, requirementEv
 import { loadWorkspace } from "@/lib/data";
 import { isPreviewMode } from "@/lib/preview";
 import { getActor, AppError, assertOwner, assertTeam } from "@/lib/auth";
-import { canDecidePoolTeam, canMaintainPoolTeam, creationTimeForCycle, DEFAULT_PRIORITY, DEFAULT_STAGES, isExpectedDateUnchanged, todayString, type RequirementCycle } from "@/lib/domain";
+import { canDecidePoolTeam, canMaintain, canMaintainPoolTeam, creationTimeForCycle, DEFAULT_PRIORITY, DEFAULT_STAGES, isExpectedDateUnchanged, todayString, type RequirementCycle } from "@/lib/domain";
 import { sendDigest, validateWebhook } from "@/lib/notifications";
 import type { Stage } from "@/lib/types";
 
@@ -40,9 +40,13 @@ function poolDate(value: unknown, rejectPast: boolean) {
   if (rejectPast && result < todayString()) throw new AppError("期望实现时间不能早于今天");
   return result;
 }
-/** 需求池录入 / 编辑：空间管理员或绑定该团队的产品经理、业务负责人。 */
+/** 需求池录入 / 编辑：空间管理员或绑定该团队的业务负责人；产品经理在需求池只读，不能新建或编辑条目。 */
 function assertPoolMaintain(actor: { role: string; teamIds: string[] }, teamId: string) {
   if (!canMaintainPoolTeam(actor, teamId)) throw new AppError("你没有维护该团队需求池的权限", 403);
+}
+/** 转为正式需求时创建的是正式需求，按需求维护权限校验（空间管理员或绑定该团队的产品经理），不走需求池维护权限。 */
+function assertRequirementMaintain(actor: { role: string; teamIds: string[] }, teamId: string) {
+  if (!canMaintain(actor, teamId)) throw new AppError("你没有在该团队创建正式需求的权限", 403);
 }
 /** 需求池筛选结论（不采纳 / 转为正式需求 / 重新评估）：仅空间管理员与产品经理。 */
 function assertPoolDecide(actor: { role: string; teamIds: string[] }, teamId: string) {
@@ -237,7 +241,7 @@ export async function POST(request: NextRequest) {
         assertPoolDecide(actor, current.teamId);
         if (current.status !== "pending") throw new AppError("该条目已经给出筛选结论，如需重复转入请先重新评估");
         const teamId = body.teamId === undefined || body.teamId === "" ? current.teamId : text(body.teamId, "所属团队", true);
-        assertPoolMaintain(actor, teamId);
+        assertRequirementMaintain(actor, teamId);
         const [team] = await tx.select().from(teams).where(eq(teams.id, teamId));
         if (!team) throw new AppError("团队不存在", 404);
         const expectedDate = date(body.expectedDate);

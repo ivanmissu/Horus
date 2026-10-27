@@ -241,11 +241,12 @@ export function canViewPoolTeam(actor: { role: string; teamIds: string[] }, team
   return actor.teamIds.includes(teamId);
 }
 /**
- * 需求池维护范围：空间管理员全部；产品经理与业务负责人仅绑定团队。
+ * 需求池维护范围（新建 / 编辑条目）：空间管理员全部；业务负责人仅绑定团队。
+ * 产品经理在需求池中只负责筛选结论（不采纳 / 转正式 / 重新评估），不能新建或编辑条目。
  * 需求池是业务负责人唯一可写的模块，需求管理流程本身对他们仍是只读。
  */
 export function canMaintainPoolTeam(actor: { role: string; teamIds: string[] }, teamId: string) {
-  return actor.role === "owner" || actor.teamIds.includes(teamId);
+  return actor.role === "owner" || (actor.role === "observer" && actor.teamIds.includes(teamId));
 }
 /**
  * 需求池的「筛选结论」权限：标记不采纳 / 转为正式需求 / 重新评估。
@@ -254,9 +255,12 @@ export function canMaintainPoolTeam(actor: { role: string; teamIds: string[] }, 
 export function canDecidePoolTeam(actor: { role: string; teamIds: string[] }, teamId: string) {
   return actor.role === "owner" || (actor.role === "pm" && actor.teamIds.includes(teamId));
 }
-/** 是否有任一团队可新建需求池条目。 */
+/**
+ * 是否有任一团队可新建需求池条目：空间管理员与业务负责人（需已绑定团队）。
+ * 产品经理没有新建条目权限，只能查看并给出筛选结论。
+ */
 export function canCreatePoolItem(actor: { role: string; teamIds: string[] }) {
-  return actor.role === "owner" || actor.teamIds.length > 0;
+  return actor.role === "owner" || (actor.role === "observer" && actor.teamIds.length > 0);
 }
 /** 需求池状态：待评估 / 已采纳（已转为正式需求）/ 不采纳。 */
 export const POOL_STATUS_LABELS: Record<string, string> = { pending: "待评估", accepted: "已采纳", rejected: "不采纳" };

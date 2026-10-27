@@ -13,17 +13,17 @@ assert.equal(canMaintainPoolTeam(owner, "data"), true);
 assert.equal(canDecidePoolTeam(owner, "data"), true);
 assert.equal(canCreatePoolItem(owner), true);
 
-// 产品经理：仅绑定团队可见、可维护、可给出结论。
+// 产品经理：仅绑定团队可见、可给出筛选结论；需求池只读，不能新建或编辑条目。
 assert.equal(canViewPoolTeam(pm, "platform"), true);
 assert.equal(canViewPoolTeam(pm, "data"), false);
-assert.equal(canMaintainPoolTeam(pm, "platform"), true);
+assert.equal(canMaintainPoolTeam(pm, "platform"), false);
 assert.equal(canMaintainPoolTeam(pm, "data"), false);
 assert.equal(canDecidePoolTeam(pm, "platform"), true);
 assert.equal(canDecidePoolTeam(pm, "data"), false);
-assert.equal(canCreatePoolItem(pm), true);
+assert.equal(canCreatePoolItem(pm), false);
 assert.equal(canCreatePoolItem(unboundPm), false);
 
-// 业务负责人：可浏览全部团队的池子，但只能维护自己绑定团队的条目，
+// 业务负责人：可浏览全部团队的池子，但只能维护自己绑定团队的条目（新建 / 编辑），
 // 且筛选结论（不采纳 / 转为正式需求 / 重新评估）仅限产品经理与空间管理员。
 assert.equal(canViewPoolTeam(observer, "platform"), true);
 assert.equal(canViewPoolTeam(observer, "data"), true);
