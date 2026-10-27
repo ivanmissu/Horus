@@ -17,7 +17,7 @@ Horus 是面向**小型研发团队**的轻量化需求看盘与里程碑跟踪�
 - **团队详情**：阶段分布图（点击可筛选）、在途列表排序、历史未归档与归档历史查询
 - **需求生命周期**：新建（优先级默认高、期望上线/完成日期必填且不早于当天）/ 编辑 / 向前跳阶段（禁止回退）/ 卡点标记与解除 / 标记上线 / 归档与取消归档，全程操作留痕
 - **阶段模板**：团队独立配置阶段；删除仍有需求的阶段时必须指定迁移目标
-- **成员与团队**：负责人预建账号、角色分配（负责人 / 产品经理 / 观察员）、PM 与观察员多团队绑定、停用成员、重置成员密码；观察员仅可查看绑定团队，不能修改数据，也看不到空间管理菜单
+- **成员与团队**：空间管理员预建账号、角色分配（空间管理员 / 产品经理 / 业务负责人）、PM 与业务负责人多团队绑定、停用成员、重置成员密码；业务负责人仅可查看绑定团队，不能修改数据，也看不到空间管理菜单
 - **通知**：钉钉 Webhook + 可选加签，北京时间每日定时推送卡点与**全部逾期**（不限优先级）摘要，实时预览与发送日志
 - **移动端**：首页与团队详情只读，390px 视口无横向滚动
 
@@ -38,14 +38,14 @@ npm install
 # 任选一个数据库（下面演示 MySQL；PostgreSQL/Supabase 用 postgresql://）
 export DATABASE_URL='mysql://horus:change-me@127.0.0.1:3306/horus'
 
-# 同步表结构 + 初始化负责人（默认账号 admin，首次登录设密）
+# 同步表结构 + 初始化空间管理员（默认账号 admin，首次登录设密）
 npm run db:push && npm run db:init
 #    不想用 Drizzle 建表时，改为在空库上跑仓库自带的 ./scripts/init-sql.sh
 
 npm run dev        # 访问 http://localhost:3000
 ```
 
-- 其余可选环境变量（初始负责人账号、「本周新建」窗口天数、连接池大小、钉钉 `APP_URL` 等）及无数据库的界面预览模式（`HORUS_PREVIEW_MODE=true`）：见 [`frontend/README.md`](frontend/README.md)
+- 其余可选环境变量（初始空间管理员账号、「本周新建」窗口天数、连接池大小、钉钉 `APP_URL` 等）及无数据库的界面预览模式（`HORUS_PREVIEW_MODE=true`）：见 [`frontend/README.md`](frontend/README.md)
 - `HORUS_DEMO_MODE=true` 仅用于本地/受控演示（自动灌演示数据、免登录），**生产禁止开启**
 - 验证命令：`npm run test:domain` / `npm run typecheck` / `npm run lint` / `npm run build`
 

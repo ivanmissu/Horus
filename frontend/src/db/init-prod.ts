@@ -5,7 +5,7 @@ import { members, notificationSettings } from "./schema.ts";
 
 async function initializeProductionData() {
   const username = (process.env.HORUS_INIT_OWNER_USERNAME || "admin").trim();
-  const name = (process.env.HORUS_INIT_OWNER_NAME || "团队负责人").trim();
+  const name = (process.env.HORUS_INIT_OWNER_NAME || "空间管理员").trim();
   if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) {
     throw new Error("HORUS_INIT_OWNER_USERNAME must be 3–32 letters, numbers, dots, underscores, or hyphens");
   }

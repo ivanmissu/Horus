@@ -290,7 +290,7 @@ HORUS_DB_INIT=false              # 已跑过 02-init-owner.sql 时设；想少�
 APP_URL=https://horus.example.com            # 用户实际访问地址，钉钉摘要链接兜底
 HORUS_DB_CONNECTION_LIMIT=10                 # 连接池，默认 10
 # HORUS_INIT_OWNER_USERNAME=admin            # 仅首次建负责人有效
-# HORUS_INIT_OWNER_NAME=团队负责人
+# HORUS_INIT_OWNER_NAME=空间管理员
 # HORUS_DB_WAIT_TIMEOUT=90                   # 等 MySQL 秒数上限
 # HORUS_DB_STEP_TIMEOUT=180                  # 单步墙钟上限，防无限卡住
 EOF
@@ -326,7 +326,7 @@ kubectl -n horus create secret generic horus-secret \
 kubectl -n horus create configmap horus-config \
   --from-literal=HORUS_DEMO_MODE=false \
   --from-literal=HORUS_INIT_OWNER_USERNAME=admin \
-  --from-literal=HORUS_INIT_OWNER_NAME='团队负责人' \
+  --from-literal=HORUS_INIT_OWNER_NAME='空间管理员' \
   --from-literal=APP_URL='https://<正式域名>' \
   --from-literal=HORUS_DB_CONNECTION_LIMIT=10 \
   --from-literal=TZ=Asia/Shanghai \
@@ -747,7 +747,7 @@ kubectl -n horus create secret generic horus-secret \
 kubectl -n horus create configmap horus-config \
   --from-literal=HORUS_DEMO_MODE=false \
   --from-literal=HORUS_INIT_OWNER_USERNAME=admin \
-  --from-literal=HORUS_INIT_OWNER_NAME='团队负责人' \
+  --from-literal=HORUS_INIT_OWNER_NAME='空间管理员' \
   --from-literal=APP_URL='https://<正式域名>' \
   --from-literal=HORUS_DB_CONNECTION_LIMIT=10 \
   --from-literal=TZ=Asia/Shanghai \

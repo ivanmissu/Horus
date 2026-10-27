@@ -41,7 +41,7 @@ DATABASE_URL='postgresql://…' npm run db:init
 | `DATABASE_URL` | Supabase Session Pooler 的 PostgreSQL 连接串 | 仅服务端使用，设置为 Sensitive/Encrypted |
 | `HORUS_DEMO_MODE` | `false` | 生产必须关闭演示模式 |
 | `HORUS_INIT_OWNER_USERNAME` | `admin` | 首次初始化负责人账号 |
-| `HORUS_INIT_OWNER_NAME` | `团队负责人` | 首次初始化负责人姓名 |
+| `HORUS_INIT_OWNER_NAME` | `空间管理员` | 首次初始化负责人姓名 |
 | `APP_URL` | 最终的 `https://<project>.vercel.app` | 摘要链接兜底地址；自定义域名启用后同步更新 |
 | `HORUS_DB_CONNECTION_LIMIT` | `3` | 适配 Vercel 函数与 Supabase Pooler，避免连接数过多 |
 

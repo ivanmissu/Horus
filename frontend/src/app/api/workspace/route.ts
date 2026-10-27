@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
     } else if (action === "toggleMember") {
       assertOwner(actor);
       const id = text(body.id, "成员 ID", true, 64);
-      if (id === actor.id || id === "owner") throw new AppError("不能停用当前负责人账号");
+      if (id === actor.id || id === "owner") throw new AppError("不能停用当前空间管理员账号");
       await db.transaction(async tx => {
         const [member] = await tx.select().from(members).where(eq(members.id, id)).for("update");
         if (!member) throw new AppError("成员不存在", 404);
@@ -221,11 +221,11 @@ export async function POST(request: NextRequest) {
     } else if (action === "resetMemberPassword") {
       assertOwner(actor);
       const id = text(body.id, "成员 ID", true, 64);
-      if (id === actor.id || id === "owner") throw new AppError("不能重置当前负责人账号的密码");
+      if (id === actor.id || id === "owner") throw new AppError("不能重置当前空间管理员账号的密码");
       await db.transaction(async tx => {
         const [member] = await tx.select().from(members).where(eq(members.id, id)).for("update");
         if (!member) throw new AppError("成员不存在", 404);
-        if (member.role === "owner") throw new AppError("仅支持重置非负责人账号的密码");
+        if (member.role === "owner") throw new AppError("仅支持重置非空间管理员账号的密码");
         await tx.update(members).set({ passwordHash: null }).where(eq(members.id, id));
         await tx.delete(sessions).where(eq(sessions.memberId, id));
         await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { memberId: id, username: member.username } });
@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
       const teamIds = [...new Set(body.teamIds as string[])];
       if (teamIds.some(id => !allTeams.some(t => t.id === id))) throw new AppError("绑定团队不存在");
       const id = action === "createMember" ? randomUUID() : text(body.id, "成员 ID", true, 64);
-      if ((id === actor.id || id === "owner") && role !== "owner") throw new AppError("不能修改当前负责人角色");
+      if ((id === actor.id || id === "owner") && role !== "owner") throw new AppError("不能修改当前空间管理员角色");
       await db.transaction(async tx => {
         if (action === "createMember") {
           const username = text(body.username, "登录账号", true, 32);

@@ -127,7 +127,7 @@ DATABASE_URL=mysql://horus:change_me_horus@127.0.0.1:3306/horus
 # ── 运行模式与初始化 ─────────────────────────────────────
 HORUS_DEMO_MODE=false                          # 生产红线：true 会灌演示数据并允许免登录
 HORUS_INIT_OWNER_USERNAME=admin                # 仅首次建负责人有效，之后改这里不改已有账号
-HORUS_INIT_OWNER_NAME=团队负责人
+HORUS_INIT_OWNER_NAME=空间管理员
 
 # ── 对外地址与业务行为 ───────────────────────────────────
 APP_URL=http://192.168.1.50:3000               # 同事实际打开的地址；钉钉摘要链接兜底（页面通知设置优先）
@@ -152,7 +152,7 @@ TZ=Asia/Shanghai
 | `MYSQL_PASSWORD` | 另一个随机串。应用连库用。**只能用字母、数字、下划线**，否则拼 `DATABASE_URL` 时会被截断 |
 | `APP_URL` | 同事实际打开的地址，如 `http://192.168.1.50:3000` 或正式域名 `https://horus.example.internal`。钉钉摘要里的跳转链接以此为准（页面「通知设置」里另填的链接优先） |
 | `HORUS_PORT` | 宿主机映射端口，默认 `3000`；被占用就改这里，不要改容器内端口 |
-| `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | 初始负责人账号/姓名，默认 `admin` / `团队负责人`。**仅首次初始化时有效**，之后改这里不会改已有账号 |
+| `HORUS_INIT_OWNER_USERNAME` / `HORUS_INIT_OWNER_NAME` | 初始负责人账号/姓名，默认 `admin` / `空间管理员`。**仅首次初始化时有效**，之后改这里不会改已有账号 |
 
 保持不动的项：`HORUS_DEMO_MODE=false`（生产红线：开启会灌演示数据并允许免登录）、`TZ=Asia/Shanghai`。「本周新建」已改为自然周（周一 00:00），无需再配置窗口天数。
 

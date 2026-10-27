@@ -21,7 +21,7 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
   ]);
   if (!settings) throw new AppError("通知设置尚未初始化，请联系管理员执行数据库初始化", 503);
   const { webhook, signingSecret, pendingItems, ...safeSettings } = settings;
-  // 负责人看全部；产品经理与观察员只看绑定团队的团队与需求，成员列表保留负责人及同团队成员。
+  // 空间管理员看全部；产品经理与业务负责人只看绑定团队的团队与需求，成员列表保留空间管理员及同团队成员。
   const visibleTeams = allTeams.filter(team => canViewTeam(actor, team.id));
   const visibleRequirements = allRequirements.filter(item => canViewTeam(actor, item.teamId));
   const visibleMembers = allMembers.filter(member => actor.role === "owner" || member.role === "owner" || member.id === actor.id || member.teamIds.some(id => actor.teamIds.includes(id)));

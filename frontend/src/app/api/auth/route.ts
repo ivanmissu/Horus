@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     if (record && record.until > Date.now() && record.count >= 12) throw new AppError("尝试次数过多，请 15 分钟后重试", 429);
     attempts.set(key, { count: record && record.until > Date.now() ? record.count + 1 : 1, until: record && record.until > Date.now() ? record.until : Date.now() + 15 * 60000 });
     const [member] = await db.select().from(members).where(and(eq(members.username, username), eq(members.active, true)));
-    if (!member) throw new AppError("账号不存在或已停用，请联系团队负责人", 401);
+    if (!member) throw new AppError("账号不存在或已停用，请联系空间管理员", 401);
     if (body.action === "identify") return NextResponse.json({ firstLogin: !member.passwordHash, name: member.name });
     const password = typeof body.password === "string" ? body.password : "";
     if (password.length < 8 || Buffer.byteLength(password, "utf8") > 72) throw new AppError("密码至少为 8 个字符，且不能超过 72 字节");

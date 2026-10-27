@@ -19,5 +19,5 @@ assert.equal(loginResponse.status, 200);
 const loginHtml = await loginResponse.text();
 assert.ok(loginHtml.includes("login-page"), "login page should render");
 assert.ok(!loginHtml.includes("login-demo"), "login page must not show demo shortcuts by default");
-assert.ok(!loginHtml.includes("团队负责人 · chen"), "demo accounts must not appear in secure mode");
+assert.ok(!loginHtml.includes("空间管理员 · chen"), "demo accounts must not appear in secure mode");
 console.log("SECURE DEFAULT AUTHENTICATION TESTS PASSED");

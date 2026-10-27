@@ -46,7 +46,7 @@ services:
       DATABASE_URL: mysql://${MYSQL_USER:-horus}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-horus}
       HORUS_DEMO_MODE: ${HORUS_DEMO_MODE:-false}
       HORUS_INIT_OWNER_USERNAME: ${HORUS_INIT_OWNER_USERNAME:-admin}
-      HORUS_INIT_OWNER_NAME: "${HORUS_INIT_OWNER_NAME:-团队负责人}"
+      HORUS_INIT_OWNER_NAME: "${HORUS_INIT_OWNER_NAME:-空间管理员}"
       APP_URL: ${APP_URL:-http://localhost:3000}
       HORUS_DB_CONNECTION_LIMIT: ${HORUS_DB_CONNECTION_LIMIT:-10}
       # Container entrypoint switches (see docs/deployment-guide.md section 5, path D).

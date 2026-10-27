@@ -9,7 +9,7 @@ Horus 是面向小型研发团队的里程碑跟踪工具，基于 Next.js App R
 - 团队详情：阶段分布、筛选与排序、在途、历史未归档和归档列表。
 - 需求全生命周期：创建（优先级默认高优先级，可下调；期望上线/完成日期必填，日历只放开当天及以后，按北京时间判定）、编辑（已填过去日期的需求以下限为当前值，可保留或往后调整）、跳阶段推进、卡点标记和解除、取消、上线后手动归档。日期限制只作用于界面，接口写入不受影响。
 - 阶段模板：团队独立配置阶段；删除仍有需求的阶段时必须指定迁移目标。
-- 成员与团队：负责人预建账号、角色分配、多团队绑定、停用成员、重置 PM 密码、编辑团队基础信息。
+- 成员与团队：空间管理员预建账号、角色分配、多团队绑定、停用成员、重置 PM 密码、编辑团队基础信息。
 - 通知设置：钉钉 Webhook、可选加签、北京时间每日定时发送卡点与全部逾期摘要（逾期不限优先级）、实时消息预览和发送日志。
 - 手机：首页与团队详情只读，可展开团队、筛选和查看需求。
 
@@ -27,15 +27,15 @@ npm run db:init
 npm run dev
 ```
 
-`DATABASE_URL` 支持 `mysql://`、`postgres://` 和 `postgresql://`。Drizzle 配置会据此自动选择 MySQL 或 PostgreSQL schema/驱动。`db:init` 幂等地创建初始负责人（默认账号 `admin`）与通知设置行；不会为已有负责人重置密码。首次登录时设置密码。
+`DATABASE_URL` 支持 `mysql://`、`postgres://` 和 `postgresql://`。Drizzle 配置会据此自动选择 MySQL 或 PostgreSQL schema/驱动。`db:init` 幂等地创建初始空间管理员（默认账号 `admin`）与通知设置行；不会为已有空间管理员重置密码。首次登录时设置密码。
 
 从旧版本升级时，先执行 `deploy/mysql/04-stats-upgrade.sql`（PostgreSQL 为 `deploy/postgres/03-stats-upgrade.sql`），再运行 `npm run db:backfill` 回填历史生命周期事件；该命令可重复执行，首次打开「需求统计」也会自动回填。
 
 可选环境变量：
 
-- `HORUS_INIT_OWNER_USERNAME`：首次创建负责人时使用的账号，默认 `admin`。
-- `HORUS_INIT_OWNER_NAME`：首次创建负责人时使用的姓名，默认 `团队负责人`。
-- `HORUS_DEMO_MODE=true`：仅用于本地/受控演示。显式启用后自动灌入演示团队和需求，并允许免登录负责人体验；默认未开启，匿名访问工作台会跳转至 `/login`。
+- `HORUS_INIT_OWNER_USERNAME`：首次创建空间管理员时使用的账号，默认 `admin`。
+- `HORUS_INIT_OWNER_NAME`：首次创建空间管理员时使用的姓名，默认 `空间管理员`。
+- `HORUS_DEMO_MODE=true`：仅用于本地/受控演示。显式启用后自动灌入演示团队和需求，并允许免登录空间管理员体验；默认未开启，匿名访问工作台会跳转至 `/login`。
 - `HORUS_DB_CONNECTION_LIMIT`：数据库连接池大小；MySQL 默认 `10`，Vercel 上 PostgreSQL 默认 `3`（应配合 Supabase 连接池使用）。
 - `HORUS_DB_PUSH` / `HORUS_DB_INIT`：容器启动入口的开关，仅影响镜像里的 `docker-entrypoint.sh`（`npm run dev` 不读）。可在 MySQL 的 `deploy/mysql/` 或 PostgreSQL 的 `deploy/postgres/` 中提前执行对应 SQL，再设置 `HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`。跳过 push 后启动仍会校验 8 张表齐全。
 - `HORUS_DB_WAIT_TIMEOUT` / `HORUS_DB_STEP_TIMEOUT`：容器入口等待数据库的秒数上限（默认 `90`）与单个数据库步骤的墙钟上限（默认 `180`，`0` 关闭），避免数据库不可达时启动无限期挂住。
@@ -58,9 +58,9 @@ HORUS_PREVIEW_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
 
 ## 账号与安全
 
-正式模式由负责人预建成员账号。成员首次登录时设置 8–72 位密码，密码使用 bcrypt 哈希；会话 Cookie 为 HTTP-only，服务端仅存 SHA-256 token 摘要。负责人可以重置 PM 密码（同时使其所有会话失效）或停用成员（立即注销会话）。无自助注册与密码找回。
+正式模式由空间管理员预建成员账号。成员首次登录时设置 8–72 位密码，密码使用 bcrypt 哈希；会话 Cookie 为 HTTP-only，服务端仅存 SHA-256 token 摘要。空间管理员可以重置 PM 密码（同时使其所有会话失效）或停用成员（立即注销会话）。无自助注册与密码找回。
 
-演示模式预置负责人 `chen` 和 PM `lin`、`su`、`zhou`；该模式提供负责人演示权限，**不可用于真实业务数据**。
+演示模式预置空间管理员 `chen` 和 PM `lin`、`su`、`zhou`；该模式提供空间管理员演示权限，**不可用于真实业务数据**。
 
 ## 数据模型
 

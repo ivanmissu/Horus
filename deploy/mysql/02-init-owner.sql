@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Horus V1 · 初始数据脚本（02-init-owner.sql）
 -- ----------------------------------------------------------------------------
--- 作用：创建初始团队负责人账号（密码留空，首次登录时设置）+ 通知设置默认行。
+-- 作用：创建初始空间管理员账号（密码留空，首次登录时设置）+ 通知设置默认行。
 --       与应用自带 db:init（frontend/src/db/init-prod.ts）等价的 SQL 版本，
 --       供 DBA 人工初始化时使用。执行本脚本后可在应用侧设 HORUS_DB_INIT=false
 --       彻底跳过容器内的初始化；不执行也没关系——容器每次启动都会幂等跑 db:init。
@@ -15,7 +15,7 @@
 SET NAMES utf8mb4;
 
 SET @owner_username = 'admin';
-SET @owner_name = '团队负责人';
+SET @owner_name = '空间管理员';
 
 -- 初始负责人：id 固定为 owner，password_hash 为 NULL 表示尚未设置密码
 INSERT INTO `horus_members` (`id`, `name`, `username`, `role`, `team_ids`, `password_hash`, `active`, `created_at`)
