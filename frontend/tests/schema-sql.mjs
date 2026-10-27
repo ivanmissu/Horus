@@ -12,7 +12,7 @@ const entrySource = readFileSync(new URL("frontend/docker-entrypoint.sh", root),
 
 const tables = new Map();
 const starts = [...schemaSource.matchAll(/export const \w+ = mysqlTable\(\s*"([a-z0-9_]+)"/g)];
-assert.ok(starts.length >= 8, `expected at least 8 tables in schema.ts, found ${starts.length}`);
+assert.ok(starts.length >= 9, `expected at least 9 tables in schema.ts, found ${starts.length}`);
 starts.forEach((match, i) => {
   const end = starts[i + 1] ? starts[i + 1].index : schemaSource.length;
   const body = schemaSource.slice(match.index, end);

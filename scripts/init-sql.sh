@@ -163,8 +163,8 @@ fi
 
 printf '==> 校验结果：\n'
 TABLES=$(query "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'horus\\_%'")
-printf '    horus_* 表数量 = %s（期望 8）\n' "$TABLES"
-[ "$TABLES" = "8" ] || fail "表数量不是 8，请确认 01-schema.sql 是否完整执行（含外键与索引语句）"
+printf '    horus_* 表数量 = %s（期望 9）\n' "$TABLES"
+[ "$TABLES" = "9" ] || fail "表数量不是 9，请确认 01-schema.sql 是否完整执行（含外键与索引语句）"
 
 if [ "$RUN_OWNER" -eq 1 ]; then
   OWNER=$(query "SELECT COUNT(*) FROM horus_members WHERE id = 'owner'")

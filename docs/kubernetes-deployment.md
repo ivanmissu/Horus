@@ -52,7 +52,7 @@ Pod horus ──出站 443──► https://oapi.dingtalk.com（每日异常摘�
 
 | 组件 | 说明 |
 |---|---|
-| `horus` Deployment | 1 副本，`Recreate`。启动时自动：等 MySQL → 同步 8 张表（或校验已建好的表）→ 幂等创建初始负责人 → 启动 Next.js |
+| `horus` Deployment | 1 副本，`Recreate`。启动时自动：等 MySQL → 同步 9 张表（或校验已建好的表）→ 幂等创建初始负责人 → 启动 Next.js |
 | `horus` Service | ClusterIP `3000`，只做集群内入口，对外靠 Ingress/网关 |
 | Secret | 路线一：`horus-env`（`.env` 文件）；路线二：`horus-secret`（`DATABASE_URL`）+ `horus-config`（非敏感项）；方式 B 另有 `horus-mysql-secret` |
 | MySQL 8.0 | 业务数据唯一持久化位置。Pod 本地不存业务数据，删 Pod 不丢数据，删库/删 PVC 才丢 |
@@ -304,7 +304,7 @@ kubectl -n horus create secret generic horus-env \
 ```
 
 - 真实 `.env` 放仓库外，别提交 Git；Secret 只是 Base64 不是加密，生产集群开静态加密并收紧 RBAC。
-- `HORUS_DB_PUSH=false` 的前提是第 4.1 步已建表；此时启动只校验 8 张表，缺表照样拒绝启动。
+- `HORUS_DB_PUSH=false` 的前提是第 4.1 步已建表；此时启动只校验 9 张表，缺表照样拒绝启动。
 - 改配置 = 编辑 `/secure/horus/.env` → 重写上面的 Secret → `rollout restart`（§9.1）。
 
 ### 5.2 路线二：纯环境变量（Secret + ConfigMap）
@@ -486,20 +486,20 @@ Database bootstrap: push=true init=true wait_timeout=90s step_timeout=180s
 Waiting for MySQL...
 MySQL is ready
 Synchronizing MySQL schema...
-MySQL schema ready (8 tables)          ← 建表完成的唯一凭据，必须出现
+MySQL schema ready (9 tables)          ← 建表完成的唯一凭据，必须出现
 Created initial owner account 'admin'. Set its password on first login.
 Horus production data initialization complete.
 Starting Horus...
 ```
 
-跳过 Drizzle（`HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`）时中间换成 `Skipping schema synchronization...` / `Skipping owner initialization...`，但 **`MySQL schema ready (8 tables)` 仍必须出现**。第二次以后启动倒数第二行变为 `Keeping existing owner account 'admin' (idempotent initialization)`，这是幂等生效不是报错。
+跳过 Drizzle（`HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`）时中间换成 `Skipping schema synchronization...` / `Skipping owner initialization...`，但 **`MySQL schema ready (9 tables)` 仍必须出现**。第二次以后启动倒数第二行变为 `Keeping existing owner account 'admin' (idempotent initialization)`，这是幂等生效不是报错。
 
 启动流程（容器入口依次做，出问题对照卡在哪一步）：
 
 1. **加载配置**：路线一先读挂载的 `.env`，容器显式 env 优先；路线二直接用环境变量。
 2. **校验 `DATABASE_URL`**：为空立即退出。
 3. **等 MySQL**：每 2 秒试连一次，最长 `HORUS_DB_WAIT_TIMEOUT`（90 秒），超时退出并 CrashLoopBackOff 重试——卡这里查网络/地址/账号，别查应用。
-4. **同步并校验表结构**：`drizzle-kit push` + 查 `information_schema` 确认 8 张表齐全，缺表即退出；带 `HORUS_DB_STEP_TIMEOUT`（180 秒）墙钟保护。`HORUS_DB_PUSH=false` 时跳过 push 只留校验。
+4. **同步并校验表结构**：`drizzle-kit push` + 查 `information_schema` 确认 9 张表齐全，缺表即退出；带 `HORUS_DB_STEP_TIMEOUT`（180 秒）墙钟保护。`HORUS_DB_PUSH=false` 时跳过 push 只留校验。
 5. **幂等初始化**：无负责人时创建（密码为空待首登设置），确保通知设置默认行存在；**不灌任何演示数据**。
 
 readiness 通过 ≈ 初始化全部完成，可放心接流量。数据库侧复核（可选）：
@@ -615,7 +615,8 @@ kubectl -n horus rollout undo deployment/horus
   ```bash
   kubectl -n horus exec deploy/horus -- node --experimental-strip-types /opt/horus-migrate/src/db/backfill-events-cli.ts
   ```
-  也可在能连库的机器上 `cd frontend && DATABASE_URL=... npm run db:backfill`；首次打开「需求统计」同样会自动回填，命令可重复执行。`HORUS_DB_PUSH=false` 时启动会校验 8 张表，缺 `horus_requirement_events` 会直接失败。
+  也可在能连库的机器上 `cd frontend && DATABASE_URL=... npm run db:backfill`；首次打开「需求统计」同样会自动回填，命令可重复执行。`HORUS_DB_PUSH=false` 时启动会校验 9 张表，缺 `horus_requirement_events` 或 `horus_requirement_pool` 会直接失败。
+- 升级到含「需求池」的版本时，旧库需要执行 `deploy/mysql/05-requirement-pool.sql`（PostgreSQL 为 `deploy/postgres/04-requirement-pool.sql`）创建 `horus_requirement_pool`；需求池为新功能，不需要回填数据。
 - 升级改过表结构又只回滚镜像导致不兼容时，连升级前备份一起恢复（§9.5），不要只回滚一半。
 
 ### 9.3 钉钉摘要联调（可选）
@@ -705,7 +706,7 @@ kubectl -n horus top pod                                       # 需 metrics-ser
 - [ ] 配置只含本路线允许的键：路线一 Secret 键为 `.env` 且含 `HORUS_ENV_FILE` 所指文件；路线二 Secret 只有 `DATABASE_URL`，且**没有**设 `HORUS_ENV_FILE`
 - [ ] `HORUS_DEMO_MODE=false`、`APP_URL` 为正式地址；没设 `HORUS_PREVIEW_MODE` / `HORUS_EMBEDDED_PREVIEW`
 - [ ] `replicas: 1` + `Recreate`，无 HPA；探针、资源与 §6 一致
-- [ ] 日志出现 `MySQL schema ready (8 tables)`；库里 8 张表、1 个 owner 可查
+- [ ] 日志出现 `MySQL schema ready (9 tables)`；库里 9 张表、1 个 owner 可查
 - [ ] 真人登录成功并打开工作台（不能只看心跳）；手机端正常
 - [ ] Ingress/网关 HTTPS 可用，转发头齐全，`APP_URL` 已对齐
 - [ ] 已完成一次备份并验证可读，备份已同步到规定位置
@@ -727,7 +728,7 @@ kubectl -n horus create secret generic horus-env --from-file=.env=/secure/horus/
 # 3. 改 deploy/k8s/horus.yaml 的 image 后部署
 kubectl -n horus apply -f deploy/k8s/horus.yaml
 kubectl -n horus rollout status deployment/horus --timeout=180s
-kubectl -n horus logs deployment/horus --tail=100        # 期望 MySQL schema ready (8 tables) → Starting Horus...
+kubectl -n horus logs deployment/horus --tail=100        # 期望 MySQL schema ready (9 tables) → Starting Horus...
 # 4. 验收：port-forward + curl /api/health；挂 Ingress（§7.2）后用 admin 首登设密
 ```
 
@@ -788,7 +789,7 @@ SELECT id, enabled, time FROM horus_notification_settings WHERE id = 'default';
 
 | 变量 | 默认 | 作用 |
 | --- | --- | --- |
-| `HORUS_DB_PUSH` | `true` | `false` = 启动不跑 `drizzle-kit push`，仅校验 8 张表存在（缺表仍拒绝启动） |
+| `HORUS_DB_PUSH` | `true` | `false` = 启动不跑 `drizzle-kit push`，仅校验 9 张表存在（缺表仍拒绝启动） |
 | `HORUS_DB_INIT` | `true` | `false` = 不跑负责人/通知设置的幂等初始化（已用 `02-init-owner.sql` 建好时） |
 | `HORUS_DB_WAIT_TIMEOUT` | `90` | 等 MySQL 可查询的秒数上限 |
 | `HORUS_DB_STEP_TIMEOUT` | `180` | 单步墙钟上限（`0` 关闭），让「连不上」变成明确失败 |

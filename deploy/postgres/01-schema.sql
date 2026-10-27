@@ -1,4 +1,4 @@
--- Horus V1 · PostgreSQL schema (8 tables).
+-- Horus V1 · PostgreSQL schema (9 tables).
 -- Apply once to an empty database; the application uses Drizzle's matching
 -- schema at frontend/src/db/schema.postgres.ts.
 
@@ -36,6 +36,35 @@ CREATE TABLE "horus_requirement_events" (
   "estimated" boolean NOT NULL DEFAULT false,
   "created_at" varchar(40) NOT NULL,
   CONSTRAINT "horus_requirement_events_unique" UNIQUE ("requirement_id", "type", "created_at")
+);
+
+CREATE TABLE "horus_requirement_pool" (
+  "id" serial PRIMARY KEY,
+  "team_id" varchar(64) NOT NULL,
+  "title" varchar(255) NOT NULL,
+  "description" text NOT NULL,
+  "priority" varchar(16) NOT NULL DEFAULT 'medium',
+  "submitter" varchar(128) NOT NULL DEFAULT '',
+  "expected_date" varchar(10),
+  "business_value" text NOT NULL,
+  "note" text NOT NULL,
+  "status" varchar(16) NOT NULL DEFAULT 'pending',
+  "requirement_id" integer,
+  "decided_at" varchar(40),
+  "decided_by" varchar(64),
+  "decision_note" text NOT NULL,
+  "created_by" varchar(64),
+  "updated_by" varchar(64),
+  "created_at" varchar(40) NOT NULL,
+  "updated_at" varchar(40) NOT NULL,
+  CONSTRAINT "horus_requirement_pool_team_id_horus_teams_id_fk"
+    FOREIGN KEY ("team_id") REFERENCES "horus_teams"("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT "horus_requirement_pool_decided_by_horus_members_id_fk"
+    FOREIGN KEY ("decided_by") REFERENCES "horus_members"("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT "horus_requirement_pool_created_by_horus_members_id_fk"
+    FOREIGN KEY ("created_by") REFERENCES "horus_members"("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT "horus_requirement_pool_updated_by_horus_members_id_fk"
+    FOREIGN KEY ("updated_by") REFERENCES "horus_members"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
 );
 
 CREATE TABLE "horus_requirements" (
@@ -110,6 +139,9 @@ CREATE INDEX "horus_audit_logs_requirement_id_idx" ON "horus_audit_logs" ("requi
 CREATE INDEX "horus_requirement_events_requirement_id_idx" ON "horus_requirement_events" ("requirement_id");
 CREATE INDEX "horus_requirement_events_created_at_idx" ON "horus_requirement_events" ("created_at");
 CREATE INDEX "horus_requirement_events_team_id_idx" ON "horus_requirement_events" ("team_id");
+CREATE INDEX "horus_requirement_pool_team_id_idx" ON "horus_requirement_pool" ("team_id");
+CREATE INDEX "horus_requirement_pool_status_idx" ON "horus_requirement_pool" ("status");
+CREATE INDEX "horus_requirement_pool_created_at_idx" ON "horus_requirement_pool" ("created_at");
 CREATE INDEX "horus_sessions_member_id_idx" ON "horus_sessions" ("member_id");
 
 -- The application uses a server-only PostgreSQL URL. Do not expose these
@@ -118,6 +150,7 @@ ALTER TABLE "horus_teams" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_members" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_requirement_events" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_requirements" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "horus_requirement_pool" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_sessions" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_audit_logs" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "horus_notification_settings" ENABLE ROW LEVEL SECURITY;

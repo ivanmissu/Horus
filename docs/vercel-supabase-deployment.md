@@ -51,7 +51,7 @@ DATABASE_URL='postgresql://…' npm run db:init
 
 ## 3.1 升级到「需求统计」
 
-已有 Supabase 数据库升级到此版本时，先在 SQL Editor 执行 `deploy/postgres/03-stats-upgrade.sql`，再触发一次新部署。首次打开「需求统计」会自动回填历史事件；也可以在本机仓库 `frontend/` 目录执行 `DATABASE_URL=... npm run db:backfill`（Vercel 无常驻容器，回填既可交给应用也可本地跑）。历史上线/取消时间按 `entered_at` / `archived_at` 近似，卡点历史以审计日志为准，页面会标注估算。
+已有 Supabase 数据库升级到此版本时，先在 SQL Editor 执行 `deploy/postgres/03-stats-upgrade.sql`（升级到带「需求池」的版本再加执行 `deploy/postgres/04-requirement-pool.sql`），再触发一次新部署。首次打开「需求统计」会自动回填历史事件；也可以在本机仓库 `frontend/` 目录执行 `DATABASE_URL=... npm run db:backfill`（Vercel 无常驻容器，回填既可交给应用也可本地跑）。历史上线/取消时间按 `entered_at` / `archived_at` 近似，卡点历史以审计日志为准，页面会标注估算。
 
 ## 4. 日报与运行边界
 

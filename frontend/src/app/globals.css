@@ -375,3 +375,30 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
   .stats-drill-mobile{display:flex}
   .stats-drill-mobile .mobile-requirement{border:1px solid #eceef5;border-radius:8px;padding:12px 13px;background:#fff;text-align:left}
 }
+
+/* ——— 需求池（进入研发流程之前的漏斗） ——— */
+.pool-heading-icon{background:#efebfb;color:#9279d3}
+.pool-table .col-title{width:32%}
+.pool-table .col-stage{width:15%}
+.pool-table .col-dwell{width:11%}
+.pool-table .col-owner{width:13%}
+.pool-table .col-date{width:14%}
+.pool-table .col-flags{width:15%}
+.pool-secondary-text{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#a7abb9;font-size:9px}
+.pool-secondary-text>span{margin-right:6px;color:#c3c6d2}
+.pool-priority-label{font-size:10px;color:#8f93a4;white-space:nowrap}
+.pool-row-actions{display:inline-flex;align-items:center;gap:9px}
+.pool-convert-button{color:#8b77c5;font-size:10px}
+.pool-convert-button:hover{color:#6850ba}
+.pool-eyebrow{display:inline-flex;align-items:center;gap:5px}
+.pool-tabs-note{display:inline-flex;align-items:center;gap:5px;margin-left:auto;font-size:9.5px;color:#a2a6b5;white-space:nowrap}
+.pool-decision{display:flex;gap:9px;align-items:flex-start;margin-top:18px;padding:12px 14px;border-radius:6px;border:1px solid #e9e7f2;background:#faf9fe;color:#a295c0;font-size:10px;line-height:1.8}
+.pool-decision>svg{margin-top:2px;flex-shrink:0}
+.pool-decision strong{display:block;font-size:10.5px;font-weight:550;color:#8b7fb0;margin-bottom:3px}
+.pool-decision.rejected{background:#fafafc;border-color:#ecedf2;color:#a5a9b7}
+.pool-decision.rejected strong{color:#8f93a2}
+.pool-decision.accepted{background:#f4faf6;border-color:#e3efe7;color:#8fa99a}
+.pool-decision.accepted strong{color:#7d9c8a}
+.pool-readonly-note{display:flex;gap:6px;margin-top:15px;font-size:9.5px;color:#a0a3b2;line-height:1.7;align-items:flex-start}
+.pool-readonly-note>svg{margin-top:2px;flex-shrink:0}
+@media(max-width:768px){.pool-table .col-title{width:auto}.pool-row-actions{gap:6px}.pool-decision{margin-top:16px;font-size:9px}.pool-tabs-note{display:none}}

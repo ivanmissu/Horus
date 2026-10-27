@@ -51,8 +51,9 @@ horus-app ──出站──► https://oapi.dingtalk.com（每日异常摘要�
 | `scripts/init-db.sh` | 数据库初始化/重跑校验：建表 + 初始负责人 + 8 表齐全性校验（幂等） |
 | `scripts/init-sql.sh` | 在**外部/已有 MySQL** 上一次性建表 + 建负责人（跑 `deploy/mysql/*.sql` 并校验），之后可关掉容器内的 Drizzle 同步 |
 | `scripts/backup.sh` / `scripts/restore.sh` | 数据库备份（.sql.gz）/ 恢复（恢复前自动留底，需 `--yes` 确认） |
-| `deploy/mysql/01-schema.sql` | 8 张表建表 DDL（由 Drizzle Schema 生成），供 DBA 人工建库/评审 |
+| `deploy/mysql/01-schema.sql` | 9 张表建表 DDL（由 Drizzle Schema 生成），供 DBA 人工建库/评审 |
 | `deploy/mysql/04-stats-upgrade.sql` | 旧库升级到「需求统计」的一次性脚本（新库不要执行） |
+| `deploy/mysql/05-requirement-pool.sql` | 旧库升级到「需求池」的一次性脚本（新库不要执行），PostgreSQL 为 `deploy/postgres/04-requirement-pool.sql` |
 | `deploy/mysql/02-init-owner.sql` | 初始负责人 + 通知设置 SQL 版（与应用 `db:init` 等价，幂等） |
 | `frontend/docker-entrypoint.sh` | 容器启动脚本：等 MySQL → 同步表结构 → 初始化负责人 → 启动应用（可用 `HORUS_DB_PUSH` / `HORUS_DB_INIT` 关掉前两步） |
 
@@ -194,10 +195,10 @@ docker compose logs -f horus         # 看启动过程，Ctrl+C 退出不影响�
 **容器启动时自动完成的初始化**（`docker-entrypoint.sh`，无需人工干预）：
 
 1. 等待 MySQL 可查询（最长 90 秒，靠 compose 健康检查 + 脚本双重等待）；
-2. `drizzle-kit push` 同步 8 张表结构，并逐表校验齐全，缺表直接启动失败（不会假装成功）；
+2. `drizzle-kit push` 同步 9 张表结构，并逐表校验齐全，缺表直接启动失败（不会假装成功）；
 3. `db:init` 幂等创建初始负责人与通知设置默认行——每次启动都跑，但**不覆盖**已有负责人密码和已保存的钉钉配置；
 
-第 2、3 步各有一个开关（`HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`，见第 5 节路径 D）。关掉第 2 步后**仍会校验 8 张表**，缺表照样拒绝启动，不会带着空库上线。
+第 2、3 步各有一个开关（`HORUS_DB_PUSH=false` / `HORUS_DB_INIT=false`，见第 5 节路径 D）。关掉第 2 步后**仍会校验 9 张表**，缺表照样拒绝启动，不会带着空库上线。
 4. 以 standalone 模式监听 `0.0.0.0:3000`，进程内每分钟调度检查钉钉摘要与过期会话清理（单实例假设，勿扩容）。
 
 ---
@@ -250,7 +251,7 @@ docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$
 
 注意事项：
 
-- `01-schema.sql` 是一次性建表脚本（8 张表：`horus_teams`、`horus_members`、`horus_requirements`、`horus_requirement_events`、`horus_sessions`、`horus_audit_logs`、`horus_notification_settings`、`horus_notification_logs`），对已有数据的库重复执行会因表/外键已存在报错，不要拿它当升级脚本；结构变更仍走应用启动时的 Drizzle 同步或 DBA 评审后的变更单。
+- `01-schema.sql` 是一次性建表脚本（9 张表：`horus_teams`、`horus_members`、`horus_requirements`、`horus_requirement_events`、`horus_requirement_pool`、`horus_sessions`、`horus_audit_logs`、`horus_notification_settings`、`horus_notification_logs`），对已有数据的库重复执行会因表/外键已存在报错，不要拿它当升级脚本；结构变更仍走应用启动时的 Drizzle 同步或 DBA 评审后的变更单。
 - `02-init-owner.sql` 执行前可改文件头的 `@owner_username` / `@owner_name`；与 `db:init` 二选一即可，重复执行无副作用。若走 compose 部署，`.env` 里的 `HORUS_INIT_OWNER_*` 应与 SQL 中一致，避免两处口径不同。
 - 首选仍是路径 A：手工 SQL 一旦与 `frontend/src/db/schema.ts` 漂移，启动校验会以缺表/结构同步失败的形式暴露，但排查成本高于自动路径。漂移可由 `npm run test:schema-sql` 提前查出（比对 `01-schema.sql` 与 `schema.ts` 的表名、列名和关键约束）。
 
@@ -274,7 +275,7 @@ printf 'HORUS_DB_PUSH=false\nHORUS_DB_INIT=false\n' >> .env
 
 | 变量 | 默认 | 关掉后的效果 |
 |---|---|---|
-| `HORUS_DB_PUSH` | `true` | `false`：不执行 `drizzle-kit push`；启动时只查 `information_schema` 确认 8 张表存在 |
+| `HORUS_DB_PUSH` | `true` | `false`：不执行 `drizzle-kit push`；启动时只查 `information_schema` 确认 9 张表存在 |
 | `HORUS_DB_INIT` | `true` | `false`：不执行 `db:init`。仅在已跑 `02-init-owner.sql` 时设置，否则没有负责人账号、无法首次登录 |
 | `HORUS_DB_WAIT_TIMEOUT` | `90` | 等 MySQL 可查询的秒数 |
 | `HORUS_DB_STEP_TIMEOUT` | `180` | 每个数据库步骤的墙钟上限（`0` 关闭）。让「连不上」变成明确失败，而不是无限期吊着 rollout |
@@ -283,7 +284,7 @@ printf 'HORUS_DB_PUSH=false\nHORUS_DB_INIT=false\n' >> .env
 
 - 表结构从此由**你**维护。每次升级前确认该版本 `frontend/src/db/schema.ts` 有无变化；有变化就先备份、由 DBA 执行对应 DDL（或临时把 `HORUS_DB_PUSH` 设回 `true` 启动一次同步后再关掉）。
 - 应用账号可以收紧到 `SELECT/INSERT/UPDATE/DELETE`，这通常是走本路径的原因。
-- 新库上线后请核对日志出现 `MySQL schema ready (8 tables)`；缺表会以 `Schema sync did not create: …` 直接启动失败。
+- 新库上线后请核对日志出现 `MySQL schema ready (9 tables)`；缺表会以 `Schema sync did not create: …` 直接启动失败。
 - 手工 SQL 与 Drizzle schema 的同步由 `npm run test:schema-sql` 兜底，改表时两侧都要动。
 
 ### 路径 E：从旧版本升级到「需求统计」（已有数据）
@@ -294,7 +295,9 @@ printf 'HORUS_DB_PUSH=false\nHORUS_DB_INIT=false\n' >> .env
 # 1) 先备份数据库
 # 2) MySQL 旧库执行一次性升级脚本（PostgreSQL 用 deploy/postgres/03-stats-upgrade.sql）
 docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < deploy/mysql/04-stats-upgrade.sql
-# 3) 启动应用；日志应出现 MySQL schema ready (8 tables)
+# 3) 升级到含「需求池」的版本（PostgreSQL 用 deploy/postgres/04-requirement-pool.sql）
+docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < deploy/mysql/05-requirement-pool.sql
+# 3) 启动应用；日志应出现 MySQL schema ready (9 tables)
 ./scripts/deploy.sh --no-build
 # 4) 回填历史生命周期事件（首次打开统计页也会自动回填）
 docker compose exec horus node --experimental-strip-types /opt/horus-migrate/src/db/backfill-events-cli.ts
@@ -312,7 +315,7 @@ docker compose exec horus node --experimental-strip-types /opt/horus-migrate/src
 
 | 做了 | 没做 |
 |---|---|
-| 建 8 张表、建负责人（密码为空）、建通知设置默认行 | 不灌任何演示团队/需求（演示数据只在 `HORUS_DEMO_MODE=true` 时出现） |
+| 建 9 张表、建负责人（密码为空）、建通知设置默认行 | 不灌任何演示团队/需求（演示数据只在 `HORUS_DEMO_MODE=true` 时出现） |
 | 每次启动重复执行且幂等 | 不给负责人预设密码——密码由本人在首次登录时设置（见第 6 节） |
 
 账号建错且**尚未投产**时，宁可推倒重来也不要改库凑合：备份后 `docker compose down -v` 清卷，按第 4 节重新部署（**会清空全部数据，仅限未投产时**）。已投产后账号问题一律走页面功能（改名、停用、重置密码）。
@@ -414,7 +417,7 @@ git pull                                   # 2) 拉新代码（或解压新版�
 
 - 启动时的结构同步对无变更是空操作；`drizzle-kit push --force` 会自动接受 Drizzle 认为可能丢数据的变更（如删列），**发版前先看 schema diff**，不能接受自动删列时停在旧版，走 DBA 变更单手工迁移后再升级。
 - 走路径 D（`HORUS_DB_PUSH=false`）时**没有任何自动同步**：升级前必须自己确认表结构是否需要变更（对比 `frontend/src/db/schema.ts` 与库内结构，或跑一次 `npm run test:schema-sql` 看 SQL 文件有没有漂移），需要变更就由 DBA 执行 DDL 后再换镜像/重启。
-- 升级到含「需求统计」的版本时，旧库先执行 `deploy/mysql/04-stats-upgrade.sql`（PostgreSQL 用 `deploy/postgres/03-stats-upgrade.sql`），再运行 `cd frontend && npm run db:backfill`；新库直接执行 01-schema.sql 即可。
+- 升级到含「需求统计」的版本时，旧库先执行 `deploy/mysql/04-stats-upgrade.sql`（PostgreSQL 用 `deploy/postgres/03-stats-upgrade.sql`），再运行 `cd frontend && npm run db:backfill`；新库直接执行 01-schema.sql 即可。升级到含「需求池」的版本时，旧库另需执行 `deploy/mysql/05-requirement-pool.sql`（PostgreSQL 用 `deploy/postgres/04-requirement-pool.sql`）；需求池不需要回填数据。
 - 回滚：切回上一版代码重新 `./scripts/deploy.sh`，并用升级前备份 `./scripts/restore.sh <备份> --yes` 连库一起回退。不要只回滚应用而留下不兼容的新表结构。
 
 ---

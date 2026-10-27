@@ -1,7 +1,7 @@
 # Horus · 纯 Docker 部署（不用 Docker Compose）
 
 - 关联文档：[环境变量参考](./environment-variables.md) · [Compose 部署手册](./deployment-guide.md) · [Kubernetes 部署](./kubernetes-deployment.md)
-- 已有 MySQL 实例、服务器没装 Compose v2，或希望手工掌控容器时，可以完全不用 `docker-compose.yml`，只用 `docker` 原生命令部署。镜像构建、启动初始化（等库 → 同步 8 张表 → 创建初始负责人）与 Compose 方式完全一致，差别只在编排、健康检查和运维命令要手写。
+- 已有 MySQL 实例、服务器没装 Compose v2，或希望手工掌控容器时，可以完全不用 `docker-compose.yml`，只用 `docker` 原生命令部署。镜像构建、启动初始化（等库 → 同步 9 张表 → 创建初始负责人）与 Compose 方式完全一致，差别只在编排、健康检查和运维命令要手写。
 
 > 若由 DBA 提前用 SQL 建好表，可在下面第 4 步的 `docker run` 里加 `-e HORUS_DB_PUSH=false`（已跑 `02-init-owner.sql` 时再加 `-e HORUS_DB_INIT=false`），容器启动就不再跑 Drizzle。详见 [Kubernetes 部署说明](kubernetes-deployment.md) 第 4 节与 [`scripts/init-sql.sh`](../scripts/init-sql.sh)。
 
@@ -104,12 +104,14 @@ docker run -d \
 
 ```bash
 docker exec -i horus-mysql mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < deploy/mysql/04-stats-upgrade.sql
+# 升级到含「需求池」的版本时追加（PostgreSQL 用 deploy/postgres/04-requirement-pool.sql）
+docker exec -i horus-mysql mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < deploy/mysql/05-requirement-pool.sql
 docker exec horus-app node --experimental-strip-types /opt/horus-migrate/src/db/backfill-events-cli.ts
 ```
 
 回填在 `horus-app` 容器内执行，直接使用容器已有的 `DATABASE_URL`；首次打开「需求统计」也会自动回填，重复执行不会产生重复事件。
 
-新库直接执行 `01-schema.sql` 即可，不要执行升级脚本。升级后容器日志应出现 `MySQL schema ready (8 tables)`；历史上线/取消与卡点数据为近似回填，统计页会标注估算。
+新库直接执行 `01-schema.sql` 即可，不要执行升级脚本。升级后容器日志应出现 `MySQL schema ready (9 tables)`；历史上线/取消与卡点数据为近似回填，统计页会标注估算。
 
 ## 5. 验证与首次登录
 
