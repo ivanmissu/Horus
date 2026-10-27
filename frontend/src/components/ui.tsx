@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useRef, useState, useId, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Code2, Layers3, ChartNoAxesCombined, Server, X, Inbox, LoaderCircle, ChevronDown, CalendarDays, Clock3, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import type { Team } from "@/lib/types";
 import { todayString } from "@/lib/domain";
 import { buildMonthCells, canGoPreviousMonth } from "@/lib/calendar";
+import { revealScrollTop } from "@/lib/scroll";
 
 export function HorusLogo({ compact = false }: { compact?: boolean }) {
   return <span className="brand"><span className="brand-mark"><svg width="29" height="29" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M6.5 17.5C13 10 24.5 10 33 17.5c-6.8 7.9-18.8 8.7-26.5 0Z" stroke="currentColor" strokeWidth="2.4" strokeLinejoin="round"/><circle cx="20.2" cy="17.7" r="4.3" fill="currentColor"/><path d="m11.2 22.3 1.8 8.1 5.1-4.2M24 23.2l5.4 4.9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg></span>{!compact && <span className="brand-word">Horus<span className="brand-dot">.</span></span>}</span>;
@@ -24,6 +25,47 @@ export function EmptyState({ title = "这里暂时没有需求", description = "
   return <div className="empty-state"><span className="empty-icon"><Inbox size={30} strokeWidth={1.5} /></span><h3>{title}</h3><p>{description}</p>{action}</div>;
 }
 export function Spinner() { return <LoaderCircle size={16} className="spin" />; }
+
+/**
+ * 内联确认区（「标记不采纳」「标记卡点」「确认归档」等）挂在详情内容末尾，
+ * 内容较长或屏幕较矮时它会落在可视区下方，点击按钮后看不出任何变化。
+ * 这里在确认区挂载时把它滚进内容区可视范围，并把焦点交给里面第一个输入项，
+ * 让「点一下就出现确认区」的行为在任何窗口高度下都成立。
+ */
+export function useRevealInlineAction() {
+  const lastNode = useRef<HTMLElement | null>(null);
+  return useCallback((node: HTMLElement | null) => {
+    if (!node || lastNode.current === node) return;
+    lastNode.current = node;
+    // 等两帧：确认区需要先完成布局（文本域最小高度、提示文案换行），再计算滚动位置。
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      // 手机端这些确认区是 display:none，量不到位置就不做任何滚动。
+      if (!node.isConnected || !node.offsetParent) return;
+      const field = node.querySelector<HTMLElement>("textarea, input, select");
+      // preventScroll：滚动位置统一由下面计算，避免焦点滚动与平滑滚动互相打断。
+      field?.focus({ preventScroll: true });
+      if (field instanceof HTMLTextAreaElement) {
+        // 光标落在已有说明的末尾，直接接着写。
+        field.setSelectionRange(field.value.length, field.value.length);
+      }
+      const scroller = node.closest<HTMLElement>(".modal-body");
+      if (!scroller) { node.scrollIntoView({ block: "nearest" }); return; }
+      if (!field) { node.tabIndex = -1; node.focus({ preventScroll: true }); }
+      const scrollerRect = scroller.getBoundingClientRect();
+      const rect = node.getBoundingClientRect();
+      const { scrollTop, changed } = revealScrollTop({
+        boxTop: rect.top - scrollerRect.top + scroller.scrollTop,
+        boxHeight: rect.height,
+        viewHeight: scroller.clientHeight,
+        maxTop: scroller.scrollHeight - scroller.clientHeight,
+        currentTop: scroller.scrollTop,
+      });
+      if (!changed) return;
+      const reduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      scroller.scrollTo({ top: scrollTop, behavior: reduced ? "auto" : "smooth" });
+    }));
+  }, []);
+}
 export function Modal({ title, description, children, onClose, footer, wide = false, className = "", drawer = false, eyebrow }: { title: string; description?: string; children: ReactNode; onClose: () => void; footer?: ReactNode; wide?: boolean; className?: string; drawer?: boolean; eyebrow?: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);

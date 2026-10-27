@@ -2,7 +2,7 @@
 import { useState, type FormEvent } from "react";
 import { ArrowDownUp, ArrowRight, Ban, CalendarDays, Check, ChevronDown, ChevronRight, ChevronsUp, CircleCheck, CircleSlash, Clock3, Copy, Equal, FileText, Flag, Info, Lightbulb, Pencil, Plus, RotateCcw, Rocket, ShieldCheck, Target, UserRound } from "lucide-react";
 import { useWorkspace } from "./workspace-context";
-import { Avatar, Badge, DatePicker, EmptyState, Modal, Select, Spinner, TeamIcon } from "./ui";
+import { Avatar, Badge, DatePicker, EmptyState, Modal, Select, Spinner, TeamIcon, useRevealInlineAction } from "./ui";
 import { PageHeading } from "./requirement-views";
 import { canCreatePoolItem, canDecidePoolTeam, canMaintain, canMaintainPoolTeam, DEFAULT_PRIORITY, DEFAULT_REQUIREMENT_CYCLE, PRIORITIES, REQUIREMENT_CYCLES, requirementCode, shortDate, todayString } from "@/lib/domain";
 import type { PoolItem, PoolItemStatus, Team } from "@/lib/types";
@@ -161,6 +161,7 @@ function PoolDetail({ id, onClose, onConvert }: { id: number; onClose: () => voi
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [reopening, setReopening] = useState(false);
+  const revealAction = useRevealInlineAction();
   const [decisionNote, setDecisionNote] = useState(item?.decisionNote || "");
   const [form, setForm] = useState({ teamId: "", title: "", description: "", priority: DEFAULT_PRIORITY, submitter: "", expectedDate: "", businessValue: "", note: "" });
   if (!item) return null;
@@ -223,8 +224,8 @@ function PoolDetail({ id, onClose, onConvert }: { id: number; onClose: () => voi
       <div className="detail-update">最近更新于 {new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(item.updatedAt))}<span>操作人：{data.members.find(member => member.id === item.updatedBy)?.name || "系统"}</span></div>
       <div className="mobile-readonly-note"><ShieldCheck size={13} />当前为手机只读模式，请在电脑端维护需求池。</div>
     </>}
-    {rejecting && canDecide && <form className="inline-action-box block-form desktop-edit" onSubmit={reject}><h3><Ban size={16} />标记为不采纳</h3><p>确认后条目进入「不采纳」，不再参与需求池的后续评估；如需重新考虑可再执行「重新评估」。</p><textarea value={decisionNote} onChange={event => setDecisionNote(event.target.value)} placeholder="选填：评估说明，例如暂不投入的原因…" rows={3} maxLength={1000} aria-label="评估说明" /><div className="inline-actions"><button className="button small" type="button" onClick={() => setRejecting(false)}>取消</button><button className="button danger small" type="submit" disabled={busy}>{busy ? <Spinner /> : <Ban size={14} />}确认不采纳</button></div></form>}
-    {reopening && canDecide && <div className="inline-action-box cancel-confirm desktop-edit"><h3><RotateCcw size={16} />重新评估这条需求？</h3><p>条目会回到「待评估」并解除与正式需求的关联；已生成的需求仍保留在研发流程中，不会删除。</p><div className="inline-actions"><button type="button" className="button small" onClick={() => setReopening(false)}>暂不调整</button><button type="button" className="button primary small" disabled={busy} onClick={reopen}>{busy && <Spinner />}确认重新评估</button></div></div>}
+    {rejecting && canDecide && <form ref={revealAction} className="inline-action-box block-form desktop-edit" onSubmit={reject}><h3><Ban size={16} />标记为不采纳</h3><p>确认后条目进入「不采纳」，不再参与需求池的后续评估；如需重新考虑可再执行「重新评估」。</p><textarea value={decisionNote} onChange={event => setDecisionNote(event.target.value)} placeholder="选填：评估说明，例如暂不投入的原因…" rows={3} maxLength={1000} aria-label="评估说明" /><div className="inline-actions"><button className="button small" type="button" onClick={() => setRejecting(false)}>取消</button><button className="button danger small" type="submit" disabled={busy}>{busy ? <Spinner /> : <Ban size={14} />}确认不采纳</button></div></form>}
+    {reopening && canDecide && <div ref={revealAction} className="inline-action-box cancel-confirm desktop-edit"><h3><RotateCcw size={16} />重新评估这条需求？</h3><p>条目会回到「待评估」并解除与正式需求的关联；已生成的需求仍保留在研发流程中，不会删除。</p><div className="inline-actions"><button type="button" className="button small" onClick={() => setReopening(false)}>暂不调整</button><button type="button" className="button primary small" disabled={busy} onClick={reopen}>{busy && <Spinner />}确认重新评估</button></div></div>}
   </Modal>;
 }
 
