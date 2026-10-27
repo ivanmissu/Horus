@@ -4,7 +4,7 @@ import { ArrowDownUp, ArrowRight, Ban, CalendarDays, Check, ChevronDown, Chevron
 import { useWorkspace } from "./workspace-context";
 import { Avatar, Badge, DatePicker, EmptyState, Modal, Select, Spinner, TeamIcon } from "./ui";
 import { PageHeading } from "./requirement-views";
-import { canCreatePoolItem, canDecidePoolTeam, canMaintainPoolTeam, DEFAULT_PRIORITY, DEFAULT_REQUIREMENT_CYCLE, PRIORITIES, REQUIREMENT_CYCLES, requirementCode, shortDate, todayString } from "@/lib/domain";
+import { canCreatePoolItem, canDecidePoolTeam, canMaintain, canMaintainPoolTeam, DEFAULT_PRIORITY, DEFAULT_REQUIREMENT_CYCLE, PRIORITIES, REQUIREMENT_CYCLES, requirementCode, shortDate, todayString } from "@/lib/domain";
 import type { PoolItem, PoolItemStatus, Team } from "@/lib/types";
 
 const STATUS_TONES: Record<PoolItemStatus, string> = { pending: "blue", accepted: "green", rejected: "neutral" };
@@ -175,18 +175,22 @@ function PoolDetail({ id, onClose, onConvert }: { id: number; onClose: () => voi
   const reject = async (event: FormEvent) => { event.preventDefault(); try { await mutate("rejectPoolItem", { id, decisionNote }, "已标记为不采纳，记录保留可查"); setRejecting(false); } catch {} };
   const reopen = async () => { try { await mutate("reopenPoolItem", { id }, "已回到待评估，可重新给出结论"); setReopening(false); } catch {} };
   const copy = async () => { try { await navigator.clipboard.writeText(`需求池 #${item.id} ${item.title}`); notify("条目标题已复制"); } catch { notify("浏览器暂不支持复制，请手动选中复制", "info"); } };
+  // 各分支带不同 key：点击「编辑」后整个 footer 卸载重建，被点击的按钮节点随旧子树断开连接，
+  // 避免它被 React 同节点改造成带 form 关联的 submit 按钮后，浏览器仍按点击默认动作自动提交编辑表单。
   const footer = editing
-    ? <div className="drawer-edit-footer desktop-edit"><button className="button" onClick={() => setEditing(false)}>取消编辑</button><button className="button primary" type="submit" form="edit-pool-item" disabled={busy || !form.title.trim()}>{busy ? <Spinner /> : <Check size={16} />}保存修改</button></div>
-    : canEdit ? <div className="drawer-actions desktop-edit">
-        {canDecide ? <button className="text-button cancel-requirement" onClick={() => { setRejecting(!rejecting); setReopening(false); }}><Ban size={15} />标记不采纳</button> : <span className="drawer-status-note"><Info size={14} />筛选结论由产品经理确认</span>}
-        <button className="button" onClick={startEdit}><Pencil size={15} />编辑</button>
-        {canDecide && <button className="button primary advance-button" onClick={() => onConvert(item.id)}><Rocket size={16} />转为正式需求</button>}
+    ? <div key="editing" className="drawer-edit-footer desktop-edit"><button type="button" className="button" onClick={() => setEditing(false)}>取消编辑</button><button className="button primary" type="submit" form="edit-pool-item" disabled={busy || !form.title.trim()}>{busy ? <Spinner /> : <Check size={16} />}保存修改</button></div>
+    : item.status === "pending" && (canEdit || canDecide) ? <div key="pending-actions" className="drawer-actions desktop-edit">
+        {canDecide
+          ? <button type="button" className="text-button cancel-requirement" onClick={() => { setRejecting(!rejecting); setReopening(false); }}><Ban size={15} />标记不采纳</button>
+          : <span className="drawer-status-note"><Info size={14} />筛选结论由产品经理确认</span>}
+        {canEdit && <button type="button" className="button" onClick={startEdit}><Pencil size={15} />编辑</button>}
+        {canDecide && <button type="button" className="button primary advance-button" onClick={() => onConvert(item.id)}><Rocket size={16} />转为正式需求</button>}
       </div>
-    : canDecide ? <div className="drawer-actions desktop-edit">
+    : item.status !== "pending" && canDecide ? <div key="decided-actions" className="drawer-actions desktop-edit">
         <span className="drawer-status-note"><Info size={14} />已给出筛选结论，条目只读</span>
-        <button className="button" onClick={() => { setReopening(!reopening); setRejecting(false); }}><RotateCcw size={15} />重新评估</button>
+        <button type="button" className="button" onClick={() => { setReopening(!reopening); setRejecting(false); }}><RotateCcw size={15} />重新评估</button>
       </div>
-    : <div className="drawer-readonly"><ShieldCheck size={15} />{maintainableTeams.length ? "该条目已给出筛选结论，仅供查阅" : "当前账号对该团队的需求池仅有浏览权限"}<button className="button" onClick={onClose}>关闭详情</button></div>;
+    : <div key="readonly" className="drawer-readonly"><ShieldCheck size={15} />{item.status === "pending" ? "当前账号对该团队的需求池仅有浏览权限" : "该条目已给出筛选结论，仅供查阅"}<button type="button" className="button" onClick={onClose}>关闭详情</button></div>;
   return <Modal drawer eyebrow={<><span className="pool-eyebrow"><Lightbulb size={12} />需求池</span><ChevronRight size={12} /><span>POOL-{String(item.id).padStart(3, "0")}</span><button className="icon-button tiny" aria-label="复制条目标题" onClick={copy}><Copy size={12} /></button></>} title={editing ? "编辑需求池条目" : item.title} onClose={onClose} footer={footer}>
     {editing ? <form id="edit-pool-item" className="form-stack" onSubmit={save}>
       <div className="form-grid">
@@ -202,7 +206,7 @@ function PoolDetail({ id, onClose, onConvert }: { id: number; onClose: () => voi
       <div className="form-field"><label htmlFor="edit-pool-value">业务价值说明</label><textarea id="edit-pool-value" rows={3} maxLength={2000} value={form.businessValue} onChange={event => set("businessValue", event.target.value)} /></div>
       <div className="form-field"><label htmlFor="edit-pool-note">备注</label><textarea id="edit-pool-note" rows={2} maxLength={1000} value={form.note} onChange={event => set("note", event.target.value)} /></div>
     </form> : <>
-      <div className="detail-badges"><PoolStatusBadge status={item.status} /><Badge tone={item.priority === "high" ? "red" : item.priority === "medium" ? "amber" : "neutral"}><Flag size={11} />{PRIORITIES[item.priority]}</Badge>{canEdit && canDecide && <button className="text-button detail-edit desktop-edit" onClick={() => onConvert(item.id)}><Rocket size={13} />转为正式需求</button>}</div>
+      <div className="detail-badges"><PoolStatusBadge status={item.status} /><Badge tone={item.priority === "high" ? "red" : item.priority === "medium" ? "amber" : "neutral"}><Flag size={11} />{PRIORITIES[item.priority]}</Badge>{item.status === "pending" && canDecide && <button type="button" className="text-button detail-edit desktop-edit" onClick={() => onConvert(item.id)}><Rocket size={13} />转为正式需求</button>}</div>
       <div className="detail-meta">
         <div><label>{team ? <TeamIcon team={team} small /> : <Info size={13} />}所属团队</label><span>{team?.name || "团队已删除"}</span></div>
         <div><label><UserRound size={13} />提报人</label><span><Avatar name={item.submitter} small />{item.submitter || "未填写"}</span></div>
@@ -220,13 +224,14 @@ function PoolDetail({ id, onClose, onConvert }: { id: number; onClose: () => voi
       <div className="mobile-readonly-note"><ShieldCheck size={13} />当前为手机只读模式，请在电脑端维护需求池。</div>
     </>}
     {rejecting && canDecide && <form className="inline-action-box block-form desktop-edit" onSubmit={reject}><h3><Ban size={16} />标记为不采纳</h3><p>确认后条目进入「不采纳」，不再参与需求池的后续评估；如需重新考虑可再执行「重新评估」。</p><textarea value={decisionNote} onChange={event => setDecisionNote(event.target.value)} placeholder="选填：评估说明，例如暂不投入的原因…" rows={3} maxLength={1000} aria-label="评估说明" /><div className="inline-actions"><button className="button small" type="button" onClick={() => setRejecting(false)}>取消</button><button className="button danger small" type="submit" disabled={busy}>{busy ? <Spinner /> : <Ban size={14} />}确认不采纳</button></div></form>}
-    {reopening && canDecide && <div className="inline-action-box cancel-confirm desktop-edit"><h3><RotateCcw size={16} />重新评估这条需求？</h3><p>条目会回到「待评估」并解除与正式需求的关联；已生成的需求仍保留在研发流程中，不会删除。</p><div className="inline-actions"><button className="button small" onClick={() => setReopening(false)}>暂不调整</button><button className="button primary small" disabled={busy} onClick={reopen}>{busy && <Spinner />}确认重新评估</button></div></div>}
+    {reopening && canDecide && <div className="inline-action-box cancel-confirm desktop-edit"><h3><RotateCcw size={16} />重新评估这条需求？</h3><p>条目会回到「待评估」并解除与正式需求的关联；已生成的需求仍保留在研发流程中，不会删除。</p><div className="inline-actions"><button type="button" className="button small" onClick={() => setReopening(false)}>暂不调整</button><button type="button" className="button primary small" disabled={busy} onClick={reopen}>{busy && <Spinner />}确认重新评估</button></div></div>}
   </Modal>;
 }
 
 function ConvertPoolItem({ item, onClose }: { item: PoolItem; onClose: () => void }) {
   const { data, busy, mutate, openDetail } = useWorkspace();
-  const teams = data.teams.filter(team => canMaintainPoolTeam(data.actor, team.id));
+  // 转入生成的是正式需求，团队范围按正式需求维护权限判断（空间管理员全部、产品经理绑定团队）。
+  const teams = data.teams.filter(team => canMaintain(data.actor, team.id));
   const [form, setForm] = useState({ teamId: teams.some(team => team.id === item.teamId) ? item.teamId : teams[0]?.id || "", title: item.title, owner: item.submitter, expectedDate: "", requirementCycle: DEFAULT_REQUIREMENT_CYCLE });
   const set = (key: keyof typeof form, value: string) => setForm(previous => ({ ...previous, [key]: value }));
   const today = todayString(data.now);
