@@ -69,7 +69,7 @@
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `HORUS_DB_CONNECTION_LIMIT` | MySQL `10`；Vercel PostgreSQL `3` | 数据库连接池大小。单实例小团队别盲目调大（注意 MySQL 侧 `max_connections`） |
-| `HORUS_DB_PUSH` | `true` | 容器启动是否执行 `drizzle-kit push` 同步 8 张表。表已由外部 SQL 建好（`./scripts/init-sql.sh` / `deploy/mysql/*.sql`）时设 `false`：应用账号不再需要 DDL 权限，启动仍会校验 8 张表，缺表直接失败。接受 `false/0/no/off` |
+| `HORUS_DB_PUSH` | `true` | 容器启动是否执行 `drizzle-kit push` 同步 9 张表。表已由外部 SQL 建好（`./scripts/init-sql.sh` / `deploy/mysql/*.sql`）时设 `false`：应用账号不再需要 DDL 权限，启动仍会校验 9 张表，缺表直接失败。接受 `false/0/no/off` |
 | `HORUS_DB_INIT` | `true` | 容器启动是否幂等创建初始负责人与通知设置默认行。已执行 `02-init-owner.sql` 时可设 `false`，否则没有账号无法首次登录 |
 | `HORUS_DB_WAIT_TIMEOUT` | `90` | 等 MySQL 可查询的秒数上限 |
 | `HORUS_DB_STEP_TIMEOUT` | `180` | 单个数据库步骤的墙钟上限（`0` 不限）。防止「连不上 MySQL」时启动流程无限期挂住 |

@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Horus V1 · MySQL 8.0 建表脚本（01-schema.sql）
 -- ----------------------------------------------------------------------------
--- 来源：由 frontend/src/db/schema.ts 经 drizzle-kit generate 生成（8 张表），
+-- 来源：由 frontend/src/db/schema.ts 经 drizzle-kit generate 生成（9 张表），
 --       与应用启动时 drizzle-kit push 的目标结构一致。
 -- 用途：在【空库】上人工初始化，或上线前评审表结构时使用；推荐通过
 --       ./scripts/init-sql.sh 执行（会顺带校验结果）。
@@ -71,6 +71,28 @@ CREATE TABLE `horus_requirement_events` (
 	CONSTRAINT `horus_requirement_events_unique` UNIQUE(`requirement_id`,`type`,`created_at`)
 );
 
+CREATE TABLE `horus_requirement_pool` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`team_id` varchar(64) NOT NULL,
+	`title` varchar(255) NOT NULL,
+	`description` text NOT NULL,
+	`priority` varchar(16) NOT NULL DEFAULT 'medium',
+	`submitter` varchar(128) NOT NULL DEFAULT '',
+	`expected_date` varchar(10),
+	`business_value` text NOT NULL,
+	`note` text NOT NULL,
+	`status` varchar(16) NOT NULL DEFAULT 'pending',
+	`requirement_id` int,
+	`decided_at` varchar(40),
+	`decided_by` varchar(64),
+	`decision_note` text NOT NULL,
+	`created_by` varchar(64),
+	`updated_by` varchar(64),
+	`created_at` varchar(40) NOT NULL,
+	`updated_at` varchar(40) NOT NULL,
+	CONSTRAINT `horus_requirement_pool_id` PRIMARY KEY(`id`)
+);
+
 CREATE TABLE `horus_requirements` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`team_id` varchar(64) NOT NULL,
@@ -118,9 +140,16 @@ CREATE TABLE `horus_teams` (
 ALTER TABLE `horus_requirements` ADD CONSTRAINT `horus_requirements_team_id_horus_teams_id_fk` FOREIGN KEY (`team_id`) REFERENCES `horus_teams`(`id`) ON DELETE no action ON UPDATE no action;
 ALTER TABLE `horus_requirements` ADD CONSTRAINT `horus_requirements_created_by_horus_members_id_fk` FOREIGN KEY (`created_by`) REFERENCES `horus_members`(`id`) ON DELETE no action ON UPDATE no action;
 ALTER TABLE `horus_requirements` ADD CONSTRAINT `horus_requirements_updated_by_horus_members_id_fk` FOREIGN KEY (`updated_by`) REFERENCES `horus_members`(`id`) ON DELETE no action ON UPDATE no action;
+ALTER TABLE `horus_requirement_pool` ADD CONSTRAINT `horus_requirement_pool_team_id_horus_teams_id_fk` FOREIGN KEY (`team_id`) REFERENCES `horus_teams`(`id`) ON DELETE no action ON UPDATE no action;
+ALTER TABLE `horus_requirement_pool` ADD CONSTRAINT `horus_requirement_pool_decided_by_horus_members_id_fk` FOREIGN KEY (`decided_by`) REFERENCES `horus_members`(`id`) ON DELETE no action ON UPDATE no action;
+ALTER TABLE `horus_requirement_pool` ADD CONSTRAINT `horus_requirement_pool_created_by_horus_members_id_fk` FOREIGN KEY (`created_by`) REFERENCES `horus_members`(`id`) ON DELETE no action ON UPDATE no action;
+ALTER TABLE `horus_requirement_pool` ADD CONSTRAINT `horus_requirement_pool_updated_by_horus_members_id_fk` FOREIGN KEY (`updated_by`) REFERENCES `horus_members`(`id`) ON DELETE no action ON UPDATE no action;
 ALTER TABLE `horus_sessions` ADD CONSTRAINT `horus_sessions_member_id_horus_members_id_fk` FOREIGN KEY (`member_id`) REFERENCES `horus_members`(`id`) ON DELETE no action ON UPDATE no action;
 CREATE INDEX `horus_audit_logs_requirement_id_idx` ON `horus_audit_logs` (`requirement_id`);
 CREATE INDEX `horus_requirement_events_requirement_id_idx` ON `horus_requirement_events` (`requirement_id`);
 CREATE INDEX `horus_requirement_events_created_at_idx` ON `horus_requirement_events` (`created_at`);
 CREATE INDEX `horus_requirement_events_team_id_idx` ON `horus_requirement_events` (`team_id`);
+CREATE INDEX `horus_requirement_pool_team_id_idx` ON `horus_requirement_pool` (`team_id`);
+CREATE INDEX `horus_requirement_pool_status_idx` ON `horus_requirement_pool` (`status`);
+CREATE INDEX `horus_requirement_pool_created_at_idx` ON `horus_requirement_pool` (`created_at`);
 CREATE INDEX `horus_sessions_member_id_idx` ON `horus_sessions` (`member_id`);

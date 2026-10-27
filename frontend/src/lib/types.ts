@@ -1,8 +1,10 @@
-import type { teams, members, requirements, requirementEvents, notificationLogs, notificationSettings } from "@/db/schema";
-export type { Stage, RequirementEventType } from "@/db/schema";
+import type { teams, members, requirements, requirementPool, requirementEvents, notificationLogs, notificationSettings } from "@/db/schema";
+export type { Stage, RequirementEventType, PoolItemStatus } from "@/db/schema";
 export type Team = typeof teams.$inferSelect;
 export type Member = Omit<typeof members.$inferSelect, "passwordHash"> & { firstLogin: boolean };
 export type Requirement = typeof requirements.$inferSelect;
+/** 需求池条目：尚未进入研发流程的业务期望 / 待评估需求。 */
+export type PoolItem = typeof requirementPool.$inferSelect;
 export type RequirementEvent = typeof requirementEvents.$inferSelect;
 export type NotificationLog = typeof notificationLogs.$inferSelect;
 export type NotificationSettings = Omit<typeof notificationSettings.$inferSelect, "webhook" | "signingSecret" | "pendingItems"> & { hasWebhook: boolean; hasSigningSecret: boolean; pendingCount: number };
@@ -10,6 +12,9 @@ export type WorkspaceData = {
   teams: Team[];
   members: Member[];
   requirements: Requirement[];
+  pool: PoolItem[];
+  /** 需求池可浏览的团队（业务负责人可浏览全部团队），用于筛选与团队名称展示。 */
+  poolTeams: Team[];
   settings: NotificationSettings;
   logs: NotificationLog[];
   actor: Member;

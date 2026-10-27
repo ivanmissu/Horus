@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 import { databaseDialect, db } from "@/db";
-import { teams, members, requirements, auditLogs, requirementEvents, notificationSettings, sessions } from "@/db/schema";
+import { teams, members, requirements, requirementPool, auditLogs, requirementEvents, notificationSettings, sessions } from "@/db/schema";
 import { loadWorkspace } from "@/lib/data";
 import { isPreviewMode } from "@/lib/preview";
 import { getActor, AppError, assertOwner, assertTeam } from "@/lib/auth";
-import { creationTimeForCycle, DEFAULT_PRIORITY, DEFAULT_STAGES, isExpectedDateUnchanged, type RequirementCycle } from "@/lib/domain";
+import { canDecidePoolTeam, canMaintainPoolTeam, creationTimeForCycle, DEFAULT_PRIORITY, DEFAULT_STAGES, isExpectedDateUnchanged, todayString, type RequirementCycle } from "@/lib/domain";
 import { sendDigest, validateWebhook } from "@/lib/notifications";
 import type { Stage } from "@/lib/types";
 
@@ -32,6 +32,21 @@ function requirementCycle(value: unknown): RequirementCycle {
   if (value === undefined || value === null || value === "") return "this";
   if (value !== "this" && value !== "next") throw new AppError("请选择正确的需求周期");
   return value;
+}
+/** 需求池「期望实现时间」选填；新建时不允许填到过去，编辑既有条目保持原样即可。 */
+function poolDate(value: unknown, rejectPast: boolean) {
+  const result = date(value);
+  if (!result) return null;
+  if (rejectPast && result < todayString()) throw new AppError("期望实现时间不能早于今天");
+  return result;
+}
+/** 需求池录入 / 编辑：空间管理员或绑定该团队的产品经理、业务负责人。 */
+function assertPoolMaintain(actor: { role: string; teamIds: string[] }, teamId: string) {
+  if (!canMaintainPoolTeam(actor, teamId)) throw new AppError("你没有维护该团队需求池的权限", 403);
+}
+/** 需求池筛选结论（不采纳 / 转为正式需求 / 重新评估）：仅空间管理员与产品经理。 */
+function assertPoolDecide(actor: { role: string; teamIds: string[] }, teamId: string) {
+  if (!canDecidePoolTeam(actor, teamId)) throw new AppError("只有产品经理或空间管理员可以给出需求池的筛选结论", 403);
 }
 function fail(error: unknown) {
   if (error instanceof AppError) return NextResponse.json({ error: error.message }, { status: error.status });
@@ -134,6 +149,120 @@ export async function POST(request: NextRequest) {
         await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: id, action, detail: patch });
         await recordLifecycle(tx, id, current.teamId, now, events);
       });
+    } else if (action === "createPoolItem") {
+      const teamId = text(body.teamId, "所属团队", true);
+      assertPoolMaintain(actor, teamId);
+      const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId));
+      if (!team) throw new AppError("团队不存在", 404);
+      const values = {
+        teamId,
+        title: text(body.title, "需求名称", true, 120),
+        description: text(body.description, "需求描述", false, 2000),
+        priority: priority(body.priority),
+        submitter: text(body.submitter, "提报人", false, 40) || actor.name,
+        expectedDate: poolDate(body.expectedDate, true),
+        businessValue: text(body.businessValue, "业务价值说明", false, 2000),
+        note: text(body.note, "备注", false, 1000),
+        createdBy: actor.id,
+        updatedBy: actor.id,
+      };
+      result = await db.transaction(async tx => {
+        const insert = tx.insert(requirementPool).values(values);
+        const [created] = databaseDialect === "postgres"
+          ? await (insert as any).returning({ id: requirementPool.id })
+          : await insert.$returningId();
+        await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { poolId: created.id, ...values } });
+        return { id: created.id };
+      });
+    } else if (action === "updatePoolItem") {
+      const id = Number(body.id);
+      if (!Number.isInteger(id) || id < 1) throw new AppError("需求池条目编号无效");
+      await db.transaction(async tx => {
+        const [current] = await tx.select().from(requirementPool).where(eq(requirementPool.id, id)).for("update");
+        if (!current) throw new AppError("需求池条目不存在", 404);
+        assertPoolMaintain(actor, current.teamId);
+        if (current.status !== "pending") throw new AppError("已给出筛选结论的条目为只读，如需修改请先重新评估");
+        const teamId = body.teamId === undefined || body.teamId === "" ? current.teamId : text(body.teamId, "所属团队", true);
+        assertPoolMaintain(actor, teamId);
+        if (teamId !== current.teamId) {
+          const [team] = await tx.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId));
+          if (!team) throw new AppError("团队不存在", 404);
+        }
+        const patch = {
+          teamId,
+          title: text(body.title, "需求名称", true, 120),
+          description: text(body.description, "需求描述", false, 2000),
+          priority: priority(body.priority),
+          submitter: text(body.submitter, "提报人", false, 40) || current.submitter || actor.name,
+          expectedDate: body.expectedDate === undefined ? current.expectedDate : poolDate(body.expectedDate, false),
+          businessValue: text(body.businessValue, "业务价值说明", false, 2000),
+          note: text(body.note, "备注", false, 1000),
+          updatedAt: now,
+          updatedBy: actor.id,
+        };
+        await tx.update(requirementPool).set(patch).where(eq(requirementPool.id, id));
+        await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { poolId: id, ...patch } });
+      });
+    } else if (action === "rejectPoolItem") {
+      const id = Number(body.id);
+      if (!Number.isInteger(id) || id < 1) throw new AppError("需求池条目编号无效");
+      await db.transaction(async tx => {
+        const [current] = await tx.select().from(requirementPool).where(eq(requirementPool.id, id)).for("update");
+        if (!current) throw new AppError("需求池条目不存在", 404);
+        assertPoolDecide(actor, current.teamId);
+        if (current.status !== "pending") throw new AppError("该条目已经给出筛选结论，如需调整请先重新评估");
+        const decisionNote = text(body.decisionNote, "评估说明", false, 1000);
+        await tx.update(requirementPool).set({ status: "rejected", decisionNote, decidedAt: now, decidedBy: actor.id, updatedAt: now, updatedBy: actor.id }).where(eq(requirementPool.id, id));
+        await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { poolId: id, decisionNote } });
+      });
+    } else if (action === "reopenPoolItem") {
+      const id = Number(body.id);
+      if (!Number.isInteger(id) || id < 1) throw new AppError("需求池条目编号无效");
+      await db.transaction(async tx => {
+        const [current] = await tx.select().from(requirementPool).where(eq(requirementPool.id, id)).for("update");
+        if (!current) throw new AppError("需求池条目不存在", 404);
+        assertPoolDecide(actor, current.teamId);
+        if (current.status === "pending") throw new AppError("该条目仍在待评估中，无需重新评估");
+        // 已转入的正式需求保留在需求流程中，这里只解除关联并回到待评估。
+        await tx.update(requirementPool).set({ status: "pending", requirementId: null, decidedAt: null, decidedBy: null, decisionNote: "", updatedAt: now, updatedBy: actor.id }).where(eq(requirementPool.id, id));
+        await tx.insert(auditLogs).values({ actorId: actor.id, action, detail: { poolId: id, from: current.status, previousRequirementId: current.requirementId } });
+      });
+    } else if (action === "convertPoolItem") {
+      const id = Number(body.id);
+      if (!Number.isInteger(id) || id < 1) throw new AppError("需求池条目编号无效");
+      let convertedId = 0;
+      await db.transaction(async tx => {
+        const [current] = await tx.select().from(requirementPool).where(eq(requirementPool.id, id)).for("update");
+        if (!current) throw new AppError("需求池条目不存在", 404);
+        assertPoolDecide(actor, current.teamId);
+        if (current.status !== "pending") throw new AppError("该条目已经给出筛选结论，如需重复转入请先重新评估");
+        const teamId = body.teamId === undefined || body.teamId === "" ? current.teamId : text(body.teamId, "所属团队", true);
+        assertPoolMaintain(actor, teamId);
+        const [team] = await tx.select().from(teams).where(eq(teams.id, teamId));
+        if (!team) throw new AppError("团队不存在", 404);
+        const expectedDate = date(body.expectedDate);
+        if (!expectedDate) throw new AppError("请填写期望上线/完成日期");
+        const title = text(body.title, "需求标题", true, 120) || current.title;
+        const owner = text(body.owner, "需求负责人", false, 40) || current.submitter;
+        const description = [current.description, current.businessValue ? `业务价值：${current.businessValue}` : ""].filter(Boolean).join("\n\n");
+        const values = {
+          teamId, title, description, priority: current.priority, owner, expectedDate,
+          stageId: team.stages[0].id, source: "需求池转入",
+          createdBy: actor.id, updatedBy: actor.id,
+          createdAt: creationTimeForCycle(requirementCycle(body.requirementCycle), now),
+        };
+        const insert = tx.insert(requirements).values(values);
+        const [created] = databaseDialect === "postgres"
+          ? await (insert as any).returning({ id: requirements.id })
+          : await insert.$returningId();
+        convertedId = created.id;
+        await tx.insert(auditLogs).values({ actorId: actor.id, requirementId: created.id, action, detail: { poolId: id, ...values } });
+        await recordLifecycle(tx, created.id, teamId, now, [{ type: "created", detail: { title, fromPoolId: id } }]);
+        await tx.update(requirementPool).set({
+          status: "accepted", requirementId: created.id, decidedAt: now, decidedBy: actor.id, updatedAt: now, updatedBy: actor.id,
+        }).where(eq(requirementPool.id, id));
+      });
+      result = { id: convertedId };
     } else if (action === "createTeam") {
       assertOwner(actor);
       const colors = ["purple", "blue", "teal", "orange"];

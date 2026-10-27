@@ -12,11 +12,12 @@ const tableNames = [
   "sessions",
   "auditLogs",
   "requirementEvents",
+  "requirementPool",
   "notificationSettings",
   "notificationLogs",
 ];
 const configs = tableNames.map(key => getTableConfig(schema[key]));
-assert.equal(configs.length, 8);
+assert.equal(configs.length, 9);
 
 const ddl = new Map();
 for (const [, table, body] of sql.matchAll(/^CREATE TABLE "([a-z0-9_]+)" \(([\s\S]*?)^\);/gm)) {
@@ -46,10 +47,12 @@ for (const constraint of [
   'CREATE INDEX "horus_requirement_events_requirement_id_idx" ON "horus_requirement_events" ("requirement_id")',
   'CREATE INDEX "horus_requirement_events_created_at_idx" ON "horus_requirement_events" ("created_at")',
   'CREATE INDEX "horus_requirement_events_team_id_idx" ON "horus_requirement_events" ("team_id")',
+  'CREATE INDEX "horus_requirement_pool_team_id_idx" ON "horus_requirement_pool" ("team_id")',
   'ALTER TABLE "horus_teams" ENABLE ROW LEVEL SECURITY',
   'ALTER TABLE "horus_members" ENABLE ROW LEVEL SECURITY',
   'ALTER TABLE "horus_requirement_events" ENABLE ROW LEVEL SECURITY',
   'ALTER TABLE "horus_requirements" ENABLE ROW LEVEL SECURITY',
+  'ALTER TABLE "horus_requirement_pool" ENABLE ROW LEVEL SECURITY',
   'ALTER TABLE "horus_sessions" ENABLE ROW LEVEL SECURITY',
   'ALTER TABLE "horus_audit_logs" ENABLE ROW LEVEL SECURITY',
   'ALTER TABLE "horus_notification_settings" ENABLE ROW LEVEL SECURITY',

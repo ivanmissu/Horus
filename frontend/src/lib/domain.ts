@@ -232,4 +232,33 @@ export function canMaintain(actor: { role: string; teamIds: string[] }, teamId: 
 export function canCreateRequirement(actor: { role: string; teamIds: string[] }) {
   return actor.role === "owner" || (actor.role === "pm" && actor.teamIds.length > 0);
 }
+/**
+ * 需求池可见范围：空间管理员全部；产品经理仅绑定团队；业务负责人可查看全部团队的池子
+ * （作为提报方需要参考其他团队已提的需求，避免重复）。
+ */
+export function canViewPoolTeam(actor: { role: string; teamIds: string[] }, teamId: string) {
+  if (actor.role === "owner" || actor.role === "observer") return true;
+  return actor.teamIds.includes(teamId);
+}
+/**
+ * 需求池维护范围：空间管理员全部；产品经理与业务负责人仅绑定团队。
+ * 需求池是业务负责人唯一可写的模块，需求管理流程本身对他们仍是只读。
+ */
+export function canMaintainPoolTeam(actor: { role: string; teamIds: string[] }, teamId: string) {
+  return actor.role === "owner" || actor.teamIds.includes(teamId);
+}
+/**
+ * 需求池的「筛选结论」权限：标记不采纳 / 转为正式需求 / 重新评估。
+ * 仅空间管理员与产品经理；业务负责人只负责提报与修改自己的需求。
+ */
+export function canDecidePoolTeam(actor: { role: string; teamIds: string[] }, teamId: string) {
+  return actor.role === "owner" || (actor.role === "pm" && actor.teamIds.includes(teamId));
+}
+/** 是否有任一团队可新建需求池条目。 */
+export function canCreatePoolItem(actor: { role: string; teamIds: string[] }) {
+  return actor.role === "owner" || actor.teamIds.length > 0;
+}
+/** 需求池状态：待评估 / 已采纳（已转为正式需求）/ 不采纳。 */
+export const POOL_STATUS_LABELS: Record<string, string> = { pending: "待评估", accepted: "已采纳", rejected: "不采纳" };
+export function poolStatusLabel(status: string) { return POOL_STATUS_LABELS[status] ?? status; }
 export { DAY_MS, SHANGHAI_OFFSET_MS };

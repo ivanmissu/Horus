@@ -53,6 +53,39 @@ export const requirements = pgTable("horus_requirements", {
   archivedAt: varchar("archived_at", { length: 40 }),
 });
 
+/**
+ * 需求池（进入研发流程之前的漏斗）：业务负责人提报的业务期望与待评估需求。
+ * pending 待评估；accepted 已采纳（已转为正式需求，requirementId 指向生成的需求）；rejected 不采纳。
+ * 已采纳 / 不采纳为终态，只能通过「重新评估」回到 pending。
+ */
+export type PoolItemStatus = "pending" | "accepted" | "rejected";
+
+export const requirementPool = pgTable("horus_requirement_pool", {
+  id: serial("id").primaryKey(),
+  teamId: varchar("team_id", { length: 64 }).notNull().references(() => teams.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull().$defaultFn(() => ""),
+  priority: varchar("priority", { length: 16 }).$type<"high" | "medium" | "low">().notNull().default("medium"),
+  submitter: varchar("submitter", { length: 128 }).notNull().default(""),
+  expectedDate: varchar("expected_date", { length: 10 }),
+  businessValue: text("business_value").notNull().$defaultFn(() => ""),
+  note: text("note").notNull().$defaultFn(() => ""),
+  status: varchar("status", { length: 16 }).$type<PoolItemStatus>().notNull().default("pending"),
+  requirementId: integer("requirement_id"),
+  decidedAt: varchar("decided_at", { length: 40 }),
+  decidedBy: varchar("decided_by", { length: 64 }).references(() => members.id),
+  /** 不采纳等筛选结论的说明，与「备注」分开保存。 */
+  decisionNote: text("decision_note").notNull().$defaultFn(() => ""),
+  createdBy: varchar("created_by", { length: 64 }).references(() => members.id),
+  updatedBy: varchar("updated_by", { length: 64 }).references(() => members.id),
+  createdAt: varchar("created_at", { length: 40 }).notNull().$defaultFn(isoNow),
+  updatedAt: varchar("updated_at", { length: 40 }).notNull().$defaultFn(isoNow),
+}, table => [
+  index("horus_requirement_pool_team_id_idx").on(table.teamId),
+  index("horus_requirement_pool_status_idx").on(table.status),
+  index("horus_requirement_pool_created_at_idx").on(table.createdAt),
+]);
+
 export const sessions = pgTable("horus_sessions", {
   id: varchar("id", { length: 64 }).primaryKey(),
   memberId: varchar("member_id", { length: 64 }).notNull().references(() => members.id),

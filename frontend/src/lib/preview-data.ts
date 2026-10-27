@@ -1,5 +1,5 @@
 import { creationTimeForCycle, DEFAULT_STAGES, startOfShanghaiWeek, todayString } from "./domain";
-import type { Member, Requirement, Team, WorkspaceData } from "./types";
+import type { Member, PoolItem, Requirement, Team, WorkspaceData } from "./types";
 
 // No database or DingTalk traffic. Data is generated for a disposable read-only UI preview.
 const now = new Date();
@@ -109,9 +109,28 @@ requirements.push({
   archivedAt: null,
 });
 
+// 需求池示例：进入研发流程之前的业务期望，独立于工作台与统计口径。
+const poolItem = (
+  id: number, teamId: string, title: string, priority: PoolItem["priority"], submitter: string,
+  expected: number | null, status: PoolItem["status"], created: number, value: string,
+  extra: Partial<PoolItem> = {},
+): PoolItem => ({
+  id, teamId, title, description: value, priority, submitter,
+  expectedDate: expected === null ? null : due(expected),
+  businessValue: value, note: "", status, requirementId: null, decidedAt: null, decidedBy: null, decisionNote: "",
+  createdBy: "preview-owner", updatedBy: "preview-owner", createdAt: ago(created), updatedAt: ago(created), ...extra,
+});
+const pool: PoolItem[] = [
+  poolItem(1, "product", "面向大客户的批量导入模板自助配置", "high", "陈嘉", 18, "pending", 2, "减少实施顾问在客户导入环节的人工投入，预计每周节省约 6 小时。"),
+  poolItem(2, "platform", "开放平台支持按应用维度的调用配额", "medium", "苏晓", 30, "pending", 5, "支撑对外生态合作，先满足 3 家合作方的基础配额诉求。"),
+  poolItem(3, "data", "经营看板支持自定义维度下钻", "high", "周亦舟", 12, "pending", 3, "让业务自助完成分层分析，减少临时取数需求。"),
+  poolItem(4, "infra", "预发布环境支持一键恢复基线数据", "low", "陆川", null, "pending", 9, "降低联调阶段的返工与环境准备成本。"),
+  poolItem(5, "product", "订单详情页展示完整履约轨迹", "high", "叶一鸣", 8, "accepted", 16, "降低客服工单量，提升客户对履约进度的确认效率。", { requirementId: 1, decidedAt: ago(4), decidedBy: "pm-su" }),
+  poolItem(6, "data", "日报推送支持按业务线订阅", "medium", "顾辰", 20, "rejected", 21, "曾期望降低人工转发成本，评估后与现有周报机制重叠。", { decidedAt: ago(6), decidedBy: "pm-zhou", decisionNote: "与现有周报机制重叠，暂不单独投入。" }),
+];
 export function previewWorkspace(): WorkspaceData {
   return {
-    teams, members, requirements, actor: previewActor, demo: true, preview: true,
+    teams, members, requirements, pool, poolTeams: teams, actor: previewActor, demo: true, preview: true,
     settings: { id: "default", enabled: false, time: "09:30", appUrl: "", lastRunDate: null,
       hasWebhook: false, hasSigningSecret: false, pendingCount: 0 },
     logs: [], now: new Date().toISOString(),

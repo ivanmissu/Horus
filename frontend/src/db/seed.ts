@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { databaseDialect, db, pool } from "@/db";
-import { teams, members, requirements, notificationSettings } from "@/db/schema";
+import { teams, members, requirements, requirementPool, notificationSettings } from "@/db/schema";
 import { creationTimeForCycle, DEFAULT_STAGES, startOfShanghaiWeek, todayString } from "@/lib/domain";
 
 let seeded: Promise<void> | undefined;
@@ -116,6 +116,14 @@ async function seed() {
       ]);
       await tx.insert(requirements).values([
         { teamId: "product", title: "历史版本数据迁移", description: "上周已上线，等待确认后归档。", priority: "high", owner: "苏晓", expectedDate: lastWeekExpected, stageId: "released", status: "released", enteredAt: lastWeekDone, releasedAt: lastWeekDone, createdAt: ago(28), updatedAt: lastWeekDone, archivedAt: null, createdBy: "pm-su", updatedBy: "pm-su" },
+      ]);
+      // 需求池示例：尚未进入研发流程的业务期望，独立于工作台与统计口径。
+      await tx.insert(requirementPool).values([
+        { teamId: "product", title: "面向大客户的批量导入模板自助配置", description: "客户希望自行配置导入模板字段映射，减少实施介入。", priority: "high", submitter: "陈嘉", expectedDate: due(18), businessValue: "减少实施顾问在客户导入环节的人工投入，预计每周节省约 6 小时。", note: "", createdAt: ago(2), updatedAt: ago(2), createdBy: "pm-su", updatedBy: "pm-su" },
+        { teamId: "platform", title: "开放平台支持按应用维度的调用配额", description: "不同合作方应用需要独立的调用配额与告警。", priority: "medium", submitter: "苏晓", expectedDate: due(30), businessValue: "支撑对外生态合作，先满足 3 家合作方的基础配额诉求。", note: "需要先确认计费策略", createdAt: ago(5), updatedAt: ago(5), createdBy: "pm-lin", updatedBy: "pm-lin" },
+        { teamId: "data", title: "经营看板支持自定义维度下钻", description: "看板需要支持按区域 / 行业 / 客户分层自由下钻。", priority: "high", submitter: "周亦舟", expectedDate: due(12), businessValue: "让业务自助完成分层分析，减少临时取数需求。", note: "", createdAt: ago(3), updatedAt: ago(3), createdBy: "pm-zhou", updatedBy: "pm-zhou" },
+        { teamId: "infra", title: "预发布环境支持一键恢复基线数据", description: "联调前可把预发布数据重置到基线版本。", priority: "low", submitter: "陆川", expectedDate: null, businessValue: "降低联调阶段的返工与环境准备成本。", note: "", createdAt: ago(9), updatedAt: ago(9), createdBy: "pm-lin", updatedBy: "pm-lin" },
+        { teamId: "data", title: "日报推送支持按业务线订阅", description: "不同业务线只订阅自己关心的日报内容。", priority: "medium", submitter: "顾辰", expectedDate: due(20), businessValue: "曾期望降低人工转发成本，评估后与现有周报机制重叠。", note: "评估结论：暂不投入", status: "rejected", decidedAt: ago(6), decidedBy: "pm-zhou", createdAt: ago(21), updatedAt: ago(6), createdBy: "pm-zhou", updatedBy: "pm-zhou" },
       ]);
       // Production may already have settings; demo seeding must not reset user-configured notifications.
       const [existingSettings] = await tx.select({ id: notificationSettings.id }).from(notificationSettings).where(eq(notificationSettings.id, "default")).limit(1);
