@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { db } from "@/db";
 import { requirements, teams, notificationSettings, notificationLogs } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { claimScheduledDigest } from "./digest-claim.ts";
 import { composeDigest } from "./digest.ts";
 import { todayString } from "./domain";
@@ -36,12 +36,13 @@ function deliveryErrorMessage(error: unknown) {
   return "网络连接失败或请求超时，请检查机器人配置";
 }
 
-async function recordDeliveryFailure(merged: string[], error: unknown, scheduled: boolean, today: string) {
+async function recordDeliveryFailure(merged: string[], pendingArchiveCount: number, error: unknown, scheduled: boolean, today: string) {
   const message = deliveryErrorMessage(error);
-  console.error(`Horus digest delivery failed (${scheduled ? "scheduled" : "manual"}, ${merged.length} items): ${message}`);
+  const archiveSuffix = pendingArchiveCount > 0 ? ` · ${pendingArchiveCount} 项待归档` : "";
+  console.error(`Horus digest delivery failed (${scheduled ? "scheduled" : "manual"}, ${merged.length} items${pendingArchiveCount > 0 ? `, ${pendingArchiveCount} pending archive` : ""}): ${message}`);
   try {
     await db.transaction(async tx => {
-      await tx.insert(notificationLogs).values({ status: "failed", summary: `${merged.length} 项异常摘要待重试`, error: message });
+      await tx.insert(notificationLogs).values({ status: "failed", summary: `${merged.length} 项异常摘要${archiveSuffix}待重试`, error: message });
       await tx.update(notificationSettings).set({ pendingItems: merged, ...(scheduled ? { lastRunDate: today } : {}) }).where(eq(notificationSettings.id, "default"));
     });
   } catch (logError) {
@@ -60,13 +61,16 @@ async function deliver(scheduled: boolean): Promise<DigestResult> {
   if (!settings?.webhook) {
     const error = new AppError("请先保存钉钉机器人 Webhook");
     if (!scheduled) throw error;
-    await recordDeliveryFailure([], error, true, today);
+    await recordDeliveryFailure([], 0, error, true, today);
     return { sent: false, message: "本次未送达，已记录日志，将在下次定时推送时合并重试" };
   }
-  const active = await db.select().from(requirements).where(eq(requirements.status, "active"));
-  const allTeams = await db.select().from(teams);
+  const [unarchived, allTeams] = await Promise.all([
+    db.select().from(requirements).where(isNull(requirements.archivedAt)).orderBy(asc(requirements.id)),
+    db.select().from(teams).orderBy(asc(teams.createdAt)),
+  ]);
   const pendingItems = normalizePendingItems(settings.pendingItems);
-  const { title, markdown, merged } = composeDigest(active, allTeams, today, pendingItems, settings.appUrl || process.env.APP_URL || "");
+  const { title, markdown, pendingArchiveCount, merged } = composeDigest(unarchived, allTeams, today, pendingItems, settings.appUrl || process.env.APP_URL || "");
+  const archiveSuffix = pendingArchiveCount > 0 ? ` · ${pendingArchiveCount} 项待归档` : "";
   try {
     const url = validateWebhook(settings.webhook);
     if (settings.signingSecret) {
@@ -79,13 +83,13 @@ async function deliver(scheduled: boolean): Promise<DigestResult> {
     const result = await response.json();
     if (!response.ok || result.errcode !== 0) throw new Error(`机器人返回错误代码 ${result.errcode ?? response.status}`);
     await db.transaction(async tx => {
-      await tx.insert(notificationLogs).values({ status: "success", summary: `已送达 ${merged.length} 项异常摘要` });
+      await tx.insert(notificationLogs).values({ status: "success", summary: `已送达 ${merged.length} 项异常摘要${archiveSuffix}` });
       await tx.update(notificationSettings).set({ pendingItems: [], ...(scheduled ? { lastRunDate: today } : {}) }).where(eq(notificationSettings.id, "default"));
     });
-    if (scheduled) console.info(`Horus daily digest delivered (${merged.length} items)`);
+    if (scheduled) console.info(`Horus daily digest delivered (${merged.length} items${pendingArchiveCount > 0 ? `, ${pendingArchiveCount} pending archive` : ""})`);
     return { sent: true, message: "异常摘要已发送至钉钉群" };
   } catch (error) {
-    await recordDeliveryFailure(merged, error, scheduled, today);
+    await recordDeliveryFailure(merged, pendingArchiveCount, error, scheduled, today);
     return { sent: false, message: "本次未送达，已记录日志，将在下次定时推送时合并重试" };
   }
 }
