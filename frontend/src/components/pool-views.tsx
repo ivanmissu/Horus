@@ -233,7 +233,7 @@ function ConvertPoolItem({ item, onClose }: { item: PoolItem; onClose: () => voi
   const { data, busy, mutate, openDetail } = useWorkspace();
   // 转入生成的是正式需求，团队范围按正式需求维护权限判断（空间管理员全部、产品经理绑定团队）。
   const teams = data.teams.filter(team => canMaintain(data.actor, team.id));
-  const [form, setForm] = useState({ teamId: teams.some(team => team.id === item.teamId) ? item.teamId : teams[0]?.id || "", title: item.title, owner: item.submitter, expectedDate: "", requirementCycle: DEFAULT_REQUIREMENT_CYCLE });
+  const [form, setForm] = useState({ teamId: teams.some(team => team.id === item.teamId) ? item.teamId : teams[0]?.id || "", title: item.title, owner: data.actor.name, expectedDate: "", requirementCycle: DEFAULT_REQUIREMENT_CYCLE });
   const set = (key: keyof typeof form, value: string) => setForm(previous => ({ ...previous, [key]: value }));
   const today = todayString(data.now);
   const selectedTeam = data.teams.find(team => team.id === form.teamId);
@@ -251,7 +251,7 @@ function ConvertPoolItem({ item, onClose }: { item: PoolItem; onClose: () => voi
       <div className="form-information"><FileText size={16} /><div>来自需求池：<strong>{item.title}</strong><p>{PRIORITIES[item.priority]} · 提报人 {item.submitter || "未填写"}{item.businessValue ? ` · ${item.businessValue}` : ""}</p></div></div>
       <div className="form-grid">
         <div className="form-field"><label htmlFor="convert-team">所属团队 <em>*</em></label><Select id="convert-team" value={form.teamId} onChange={value => set("teamId", value)} options={teams.map(team => ({ value: team.id, label: team.name }))} placeholder="选择团队" ariaLabel="所属团队" /></div>
-        <div className="form-field"><label htmlFor="convert-owner">需求负责人<span>选填</span></label><input id="convert-owner" maxLength={40} placeholder="默认沿用提报人" value={form.owner} onChange={event => set("owner", event.target.value)} /></div>
+        <div className="form-field"><label htmlFor="convert-owner">需求负责人<span>选填</span></label><input id="convert-owner" maxLength={40} placeholder="选择或输入负责人姓名" value={form.owner} onChange={event => set("owner", event.target.value)} /></div>
       </div>
       <div className="form-field"><label htmlFor="convert-title">需求标题 <em>*</em></label><input id="convert-title" required maxLength={120} value={form.title} onChange={event => set("title", event.target.value)} /><span className="field-counter">{form.title.length} / 120</span></div>
       <div className="form-field"><label htmlFor="convert-date">期望上线/完成日期 <em>*</em></label><DatePicker id="convert-date" value={form.expectedDate} onChange={value => set("expectedDate", value)} placeholder="选择今天及以后" min={today} clearable={false} minHint={`期望上线/完成日期不能早于今天（${today}）`} ariaLabel="期望上线/完成日期" /><small className="field-help">必填，只能选择今天及以后（按北京时间）；创建后不可修改。</small></div>

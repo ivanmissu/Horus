@@ -54,6 +54,14 @@ assert.equal(retry.merged.length, 5, "遗留行与今日行合并去重");
 assert.match(retry.markdown, /含上次未送达摘要/);
 assert.match(retry.markdown, /遗留需求/);
 
+// 历史未归档只在 Horus 内提醒，不作为钉钉卡点或逾期推送。
+// 即使旧数据保留了卡点标记，已上线的需求也不能进入新生成的摘要。
+const historicalArchive = row(12, { title: "历史待归档不得推送", status: "released", blocked: true, blockReason: "旧卡点", expectedDate: "2026-09-01", releasedAt: "2026-10-01T00:00:00.000Z", archivedAt: null });
+const archiveDigest = composeDigest([historicalArchive], [team], today, [], "");
+assert.equal(archiveDigest.blockedCount, 0);
+assert.equal(archiveDigest.overdueCount, 0);
+assert.doesNotMatch(archiveDigest.markdown, /历史待归档不得推送|旧卡点/);
+
 // 一切正常时的兜底文案与注入防护
 const clean = composeDigest([row(8, { title: "上线 *公告* 文案", priority: "high", expectedDate: "2026-10-01" })], [team], today, [], "");
 assert.match(clean.markdown, /上线 \\\*公告\\\* 文案/, "Markdown 控制字符需转义");
