@@ -61,9 +61,9 @@ export function composeDigest(allRequirements: Requirement[], allTeams: Team[], 
   });
   const pendingArchiveTeams = countPendingArchiveByTeam(allRequirements, allTeams, refNow);
   const pendingArchiveCount = pendingArchiveTeams.reduce((sum, item) => sum + item.count, 0);
-  const archiveHeader = pendingArchiveCount > 0 ? ` · ${pendingArchiveCount} 项待归档` : "";
+  const archiveHeader = pendingArchiveCount > 0 ? ` · ${pendingArchiveCount} 项历史待归档` : "";
   const archiveSection = pendingArchiveCount > 0
-    ? `\n\n**待归档**：${pendingArchiveTeams.map(item => `${clean(item.name)} ${item.count} 项`).join(" · ")}`
+    ? `\n\n**历史待归档**：${pendingArchiveTeams.map(item => `${clean(item.name)} ${item.count} 项`).join(" · ")}`
     : "";
   const merged = [...new Set([...pendingItems, ...items])];
   const title = `Horus 每日异常摘要 · ${today}`;
