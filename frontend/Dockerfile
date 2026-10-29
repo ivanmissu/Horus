@@ -31,11 +31,22 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV TZ=Asia/Shanghai
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/* \
-  && groupadd --system --gid 1001 nodejs \
-  && useradd --system --uid 1001 --gid 1001 --home-dir /home/nextjs --create-home nextjs
+RUN set -eux; \
+    sed -i \
+      -e 's|http://deb.debian.org/debian-security|http://mirrors.aliyun.com/debian-security|g' \
+      -e 's|http://deb.debian.org/debian|http://mirrors.aliyun.com/debian|g' \
+      /etc/apt/sources.list.d/debian.sources; \
+    apt-get update \
+      -o Acquire::Retries=3 \
+      -o Acquire::http::Timeout=30 \
+      -o Acquire::https::Timeout=30; \
+    apt-get install -y --no-install-recommends \
+      -o Acquire::Retries=3 \
+      ca-certificates; \
+    rm -rf /var/lib/apt/lists/*; \
+    groupadd --system --gid 1001 nodejs; \
+    useradd --system --uid 1001 --gid 1001 \
+      --home-dir /home/nextjs --create-home nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
