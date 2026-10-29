@@ -38,8 +38,8 @@ function deliveryErrorMessage(error: unknown) {
 
 async function recordDeliveryFailure(merged: string[], pendingArchiveCount: number, error: unknown, scheduled: boolean, today: string) {
   const message = deliveryErrorMessage(error);
-  const archiveSuffix = pendingArchiveCount > 0 ? ` · ${pendingArchiveCount} 项待归档` : "";
-  console.error(`Horus digest delivery failed (${scheduled ? "scheduled" : "manual"}, ${merged.length} items${pendingArchiveCount > 0 ? `, ${pendingArchiveCount} pending archive` : ""}): ${message}`);
+  const archiveSuffix = pendingArchiveCount > 0 ? ` · ${pendingArchiveCount} 项历史待归档` : "";
+  console.error(`Horus digest delivery failed (${scheduled ? "scheduled" : "manual"}, ${merged.length} items${pendingArchiveCount > 0 ? `, ${pendingArchiveCount} historical pending archive` : ""}): ${message}`);
   try {
     await db.transaction(async tx => {
       await tx.insert(notificationLogs).values({ status: "failed", summary: `${merged.length} 项异常摘要${archiveSuffix}待重试`, error: message });
@@ -70,7 +70,7 @@ async function deliver(scheduled: boolean): Promise<DigestResult> {
   ]);
   const pendingItems = normalizePendingItems(settings.pendingItems);
   const { title, markdown, pendingArchiveCount, merged } = composeDigest(unarchived, allTeams, today, pendingItems, settings.appUrl || process.env.APP_URL || "");
-  const archiveSuffix = pendingArchiveCount > 0 ? ` · ${pendingArchiveCount} 项待归档` : "";
+  const archiveSuffix = pendingArchiveCount > 0 ? ` · ${pendingArchiveCount} 项历史待归档` : "";
   try {
     const url = validateWebhook(settings.webhook);
     if (settings.signingSecret) {
@@ -86,7 +86,7 @@ async function deliver(scheduled: boolean): Promise<DigestResult> {
       await tx.insert(notificationLogs).values({ status: "success", summary: `已送达 ${merged.length} 项异常摘要${archiveSuffix}` });
       await tx.update(notificationSettings).set({ pendingItems: [], ...(scheduled ? { lastRunDate: today } : {}) }).where(eq(notificationSettings.id, "default"));
     });
-    if (scheduled) console.info(`Horus daily digest delivered (${merged.length} items${pendingArchiveCount > 0 ? `, ${pendingArchiveCount} pending archive` : ""})`);
+    if (scheduled) console.info(`Horus daily digest delivered (${merged.length} items${pendingArchiveCount > 0 ? `, ${pendingArchiveCount} historical pending archive` : ""})`);
     return { sent: true, message: "异常摘要已发送至钉钉群" };
   } catch (error) {
     await recordDeliveryFailure(merged, pendingArchiveCount, error, scheduled, today);

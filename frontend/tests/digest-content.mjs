@@ -67,11 +67,12 @@ assert.equal(archiveDigest.overdueCount, 0);
 assert.equal(archiveDigest.pendingArchiveCount, 1);
 assert.equal(archiveDigest.merged.length, 0, "待归档不进入异常明细或失败重试列表");
 assert.doesNotMatch(archiveDigest.markdown, /历史待归档不得推送详情|旧卡点|2026-09-01|林小满/);
-assert.match(archiveDigest.markdown, /^> 0 项卡点 · 0 项逾期 · 1 项待归档$/m);
+assert.doesNotMatch(archiveDigest.markdown, /(^|[^史])待归档/, "文案需明确提示为「历史待归档」，避免与本周「待归档」混淆");
+assert.match(archiveDigest.markdown, /^> 0 项卡点 · 0 项逾期 · 1 项历史待归档$/m);
 assert.match(
   archiveDigest.markdown,
-  /所有需求有序推进，暂无卡点或逾期。\n\n\*\*待归档\*\*：平台组 1 项\n\n\[打开 Horus 工作台\]\(https:\/\/horus\.example\.com\)$/,
-  "待归档各团队数量位于异常区域下方、工作台链接上方",
+  /所有需求有序推进，暂无卡点或逾期。\n\n\*\*历史待归档\*\*：平台组 1 项\n\n\[打开 Horus 工作台\]\(https:\/\/horus\.example\.com\)$/,
+  "历史待归档各团队数量位于异常区域下方、工作台链接上方",
 );
 
 // 多团队待归档统计口径：仅计入本周一 00:00（北京时间）前已上线且未归档的历史项，只列出 >0 的团队并按团队列表顺序展示。
@@ -96,8 +97,8 @@ assert.deepEqual(countPendingArchiveByTeam(mixedArchiveItems, allTeams, "2026-10
 ]);
 const multiTeamDigest = composeDigest(mixedArchiveItems, allTeams, today, pending, "https://horus.example.com");
 assert.equal(multiTeamDigest.pendingArchiveCount, 3);
-assert.match(multiTeamDigest.markdown, /^> 1 项卡点 · 0 项逾期 · 3 项待归档 · 含上次未送达摘要$/m);
-assert.match(multiTeamDigest.markdown, /\*\*待归档\*\*：平台组 2 项 · 数据\\\*组 1 项/);
+assert.match(multiTeamDigest.markdown, /^> 1 项卡点 · 0 项逾期 · 3 项历史待归档 · 含上次未送达摘要$/m);
+assert.match(multiTeamDigest.markdown, /\*\*历史待归档\*\*：平台组 2 项 · 数据\\\*组 1 项/);
 assert.doesNotMatch(multiTeamDigest.markdown, /产品组/, "待归档为 0 的团队不展示");
 assert.doesNotMatch(multiTeamDigest.markdown, /历史甲|历史乙|本周上线不计入|数据历史待归档/, "任何待归档需求标题均不出现在通知中");
 
