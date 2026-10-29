@@ -438,3 +438,6 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 .notification-credential-status,.notification-credential-error{display:flex;align-items:center;gap:8px;margin:0 0 15px;padding:10px 12px;border-radius:6px;background:#f4f2fb;color:#756aa1;font-size:11px;line-height:1.5}
 .notification-credential-error{background:#fff2ed;color:#a74e37}
 .notification-credential-error .text-button{margin-left:auto;color:#a74e37;white-space:nowrap}
+.preview-archive-summary{margin:0 0 13px;padding-top:12px;border-top:1px dashed #efe8f6;font-size:10.5px;line-height:1.8;color:#8390a2}
+.preview-archive-summary strong{font-weight:550;color:#657084}
+.notification-rule-chips{flex-wrap:wrap}
