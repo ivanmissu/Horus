@@ -346,7 +346,7 @@ docker compose exec horus node --experimental-strip-types /opt/horus-migrate/src
 ## 8. 钉钉每日异常摘要联调
 
 1. 内部群添加自定义机器人，安全设置二选一：加签（把 `SEC` 密钥填进 Horus）或自定义关键词 `Horus`。
-2. 在 Horus「通知设置」填 Webhook（必须是 `https://oapi.dingtalk.com/robot/send?access_token=…`）、可选加签密钥、工作台链接（填同事打得开的内网地址）。Webhook 与密钥保存后不会回显给浏览器，日志也不记录明文。
+2. 在 Horus「通知设置」填 Webhook（必须是 `https://oapi.dingtalk.com/robot/send?access_token=…`）、可选加签密钥、工作台链接（填同事打得开的内网地址）。Webhook 与密钥仅在空间管理员的通知设置页回显，默认隐藏且可切换显示；普通工作空间接口不会返回它们，日志也不记录明文。请使用 HTTPS 并妥善控制管理员权限。
 3. 点「立即发送测试」，到群里确认**实际收到**、排版与链接可点。测试发送不占用当日定时名额。
 4. 开启「每日异常摘要」（默认 09:30，北京时间，页面可改）。**次日**到点确认只发一条且内容准确——定时到达这项必须隔日验收，不要用测试发送代替。
 5. 发送失败会写失败日志并暂存摘要，次日定时去重合并重发，页面不弹打扰式报错。到点没消息按第 11 节查。

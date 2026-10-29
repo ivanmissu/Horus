@@ -17,7 +17,9 @@ export function composeDigest(active: Requirement[], allTeams: Team[], today: st
     const created = new Date(r.createdAt);
     return Number.isFinite(created.getTime()) && todayString(created) > today;
   };
-  const current = active.filter(r => !notStarted(r));
+  // Only active requirements can create DingTalk alerts. Released items awaiting
+  // archive are reminded in Horus itself, never as an archive digest item.
+  const current = active.filter(r => r.status === "active" && !notStarted(r));
   const blockedCount = current.filter(r => r.blocked).length;
   const overdueCount = current.filter(r => isAnyOverdue(r, today)).length;
   const items = current.filter(r => r.blocked || isAnyOverdue(r, today)).map(r => {

@@ -6,6 +6,11 @@ assert.equal(apiResponse.status, 401, "workspace API must reject anonymous reque
 const apiBody = await apiResponse.json();
 assert.equal(apiBody.error, "请先登录");
 
+const credentialsResponse = await fetch(`${base}/api/notification-settings`, { redirect: "manual" });
+assert.equal(credentialsResponse.status, 401, "robot credentials must reject anonymous requests");
+assert.equal((await credentialsResponse.json()).error, "请先登录");
+assert.match(credentialsResponse.headers.get("cache-control"), /no-store/, "credential errors must not be cached");
+
 const statsResponse = await fetch(`${base}/api/stats?granularity=week`, { redirect: "manual" });
 assert.equal(statsResponse.status, 401, "statistics API must reject anonymous requests");
 assert.equal((await statsResponse.json()).error, "请先登录");

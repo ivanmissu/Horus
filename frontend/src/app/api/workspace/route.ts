@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       const [team] = await db.select().from(teams).where(eq(teams.id, teamId));
       if (!team) throw new AppError("团队不存在", 404);
       const cycle = requirementCycle(body.requirementCycle);
-      const values = { teamId, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate), stageId: team.stages[0].id, createdBy: actor.id, updatedBy: actor.id, createdAt: creationTimeForCycle(cycle, now) };
+      const values = { teamId, title: text(body.title, "需求标题", true, 120), description: text(body.description, "需求描述"), priority: priority(body.priority), owner: body.owner == null ? actor.name : text(body.owner, "负责人", false, 40), expectedDate: date(body.expectedDate), stageId: team.stages[0].id, createdBy: actor.id, updatedBy: actor.id, createdAt: creationTimeForCycle(cycle, now) };
       result = await db.transaction(async tx => {
         const insert = tx.insert(requirements).values(values);
         const [created] = databaseDialect === "postgres"
@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
         const expectedDate = date(body.expectedDate);
         if (!expectedDate) throw new AppError("请填写期望上线/完成日期");
         const title = text(body.title, "需求标题", true, 120) || current.title;
-        const owner = text(body.owner, "需求负责人", false, 40) || current.submitter;
+        const owner = body.owner == null ? actor.name : text(body.owner, "需求负责人", false, 40);
         const description = [current.description, current.businessValue ? `业务价值：${current.businessValue}` : ""].filter(Boolean).join("\n\n");
         const values = {
           teamId, title, description, priority: current.priority, owner, expectedDate,

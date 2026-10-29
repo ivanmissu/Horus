@@ -10,7 +10,7 @@ import { canArchive, canMaintain, daysOverdue, daysSince, DEFAULT_PRIORITY, DEFA
 export function CreateRequirement({ teamId, onClose }: { teamId: string; onClose: () => void }) {
   const { data, busy, mutate, openDetail } = useWorkspace();
   const allowedTeams = data.teams.filter(t => canMaintain(data.actor, t.id));
-  const [form, setForm] = useState({ teamId: teamId || allowedTeams[0]?.id || "", title: "", description: "", priority: DEFAULT_PRIORITY, owner: "", expectedDate: "", requirementCycle: DEFAULT_REQUIREMENT_CYCLE });
+  const [form, setForm] = useState({ teamId: teamId || allowedTeams[0]?.id || "", title: "", description: "", priority: DEFAULT_PRIORITY, owner: data.actor.name, expectedDate: "", requirementCycle: DEFAULT_REQUIREMENT_CYCLE });
   const set = (key: keyof typeof form, value: string) => setForm(previous => ({ ...previous, [key]: value }));
   const selectedTeam = data.teams.find(t => t.id === form.teamId);
   // 新建的需求不能把期望日填到过去：否则一创建就已“逾期”，达成率也会被补录数据污染。

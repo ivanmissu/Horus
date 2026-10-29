@@ -405,3 +405,36 @@ body{font-family:"Inter Variable","Noto Sans SC Variable",-apple-system,BlinkMac
 
 /* 内联确认区被脚本聚焦时不要出现额外描边，视觉上仍由滚动位置提示「已展开」 */
 .inline-action-box:focus{outline:none}
+
+/* 历史已上线但未归档：全站常驻，直到可见范围内全部归档。 */
+.archive-reminder{position:sticky;top:75px;z-index:30;display:flex;align-items:center;gap:14px;margin:0 0 22px;padding:15px 18px;border:1px solid #edbda8;border-left:4px solid #d96942;border-radius:9px;background:#fff3ed;box-shadow:0 4px 16px #a34e2b12;color:#78341f}
+.archive-reminder-icon{display:flex;align-items:center;justify-content:center;flex:0 0 38px;width:38px;height:38px;border-radius:9px;background:#ffe2d5;color:#be5430}
+.archive-reminder-copy{min-width:0;flex:1}
+.archive-reminder-copy strong{display:block;color:#8b371f;font-size:14px;font-weight:700;line-height:1.5}
+.archive-reminder-copy p{margin-top:3px;color:#925b48;font-size:11.5px;line-height:1.6}
+.archive-reminder-action{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;min-height:34px;padding:0 12px;border:1px solid #c96240;border-radius:6px;background:#c96240;color:#fff;font-size:11.5px;font-weight:600}
+.archive-reminder-action:hover{background:#aa482a;border-color:#aa482a}
+.archive-mobile-note{display:none}
+#workbench-requirements{scroll-margin-top:175px}
+
+/* 所有选中导航使用同一个圆点；团队数量与圆点同时保留。 */
+.nav-active-dot{flex-shrink:0}
+.team-nav-item .nav-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.team-nav-item .nav-active-dot{margin-left:0}
+.nav-compact .nav-item{position:relative}
+.nav-compact .nav-item.active .nav-active-dot{display:block;position:absolute;right:5px;top:6px;margin:0}
+@media(max-width:768px){
+  .archive-reminder{top:66px;align-items:flex-start;flex-wrap:wrap;gap:9px 11px;margin-bottom:18px;padding:12px}
+  .archive-reminder-icon{width:32px;height:32px;flex-basis:32px}
+  .archive-reminder-copy{flex:1 1 calc(100% - 43px)}
+  .archive-reminder-copy strong{font-size:12px}
+  .archive-reminder-copy p{font-size:10.5px}
+  .archive-reminder-action{margin-left:43px;min-height:30px;font-size:10.5px}
+  .archive-mobile-note{display:inline}
+  #workbench-requirements{scroll-margin-top:210px}
+  .nav-compact .nav-item.active .nav-active-dot{position:static;margin-left:auto}
+  .nav-compact .team-nav-item.active .nav-active-dot{margin-left:0}
+}
+.notification-credential-status,.notification-credential-error{display:flex;align-items:center;gap:8px;margin:0 0 15px;padding:10px 12px;border-radius:6px;background:#f4f2fb;color:#756aa1;font-size:11px;line-height:1.5}
+.notification-credential-error{background:#fff2ed;color:#a74e37}
+.notification-credential-error .text-button{margin-left:auto;color:#a74e37;white-space:nowrap}

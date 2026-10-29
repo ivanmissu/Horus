@@ -43,6 +43,18 @@ export function WorkspaceProvider({ initialData, children }: { initialData: Work
       if (showToast) notify("已同步最新数据");
     } finally { setRefreshing(false); }
   }, [data.embeddedAuth, notify, router]);
+  // Keep the global archive reminder current when another member archives a
+  // requirement or the Shanghai week rolls over while this tab remains open.
+  // Hidden tabs do not poll; returning to one refreshes it immediately.
+  useEffect(() => {
+    if (data.preview) return;
+    const synchronize = () => {
+      if (document.visibilityState === "visible" && !busy && !refreshing) void refresh().catch(() => {});
+    };
+    const timer = window.setInterval(synchronize, 60_000);
+    document.addEventListener("visibilitychange", synchronize);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", synchronize); };
+  }, [busy, data.preview, refresh, refreshing]);
   const mutate = useCallback(async (action: string, values: Record<string, unknown> = {}, success?: string) => {
     setBusy(true);
     try {
